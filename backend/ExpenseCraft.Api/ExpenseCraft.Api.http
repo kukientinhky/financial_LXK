@@ -1,0 +1,6 @@
+@ExpenseCraft.Api_HostAddress = http://localhost:5174
+
+GET {{ExpenseCraft.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

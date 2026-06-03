@@ -57,3 +57,15 @@ dist/
 # Misc
 Thumbs.db
 .eslintcache
+
+# backend
+/backend/ExpenseCraft.Api/obj/
+/backend/ExpenseCraft.Api/bin/
+/bacnkend/ExpenseCraft.Application/obj/
+/backend/ExpenseCraft.Application/bin/
+/backend/ExpenseCraft.Domain/obj/
+/backend/ExpenseCraft.Domain/bin/
+/backend/ExpenseCraft.Infrastructure/obj/
+/backend/ExpenseCraft.Infrastructure/bin/
+
+packages-microsoft-prod.deb

@@ -1,0 +1,94 @@
+{
+  "version": 3,
+  "targets": {
+    "net8.0": {
+      "ExpenseCraft.Domain/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "compile": {
+          "bin/placeholder/ExpenseCraft.Domain.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/ExpenseCraft.Domain.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "ExpenseCraft.Domain/1.0.0": {
+      "type": "project",
+      "path": "../ExpenseCraft.Domain/ExpenseCraft.Domain.csproj",
+      "msbuildProject": "../ExpenseCraft.Domain/ExpenseCraft.Domain.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0": [
+      "ExpenseCraft.Domain >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "/home/lxkien/.nuget/packages/": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "/home/lxkien/projects/financial/financial_LXK/backend/ExpenseCraft.Application/ExpenseCraft.Application.csproj",
+      "projectName": "ExpenseCraft.Application",
+      "projectPath": "/home/lxkien/projects/financial/financial_LXK/backend/ExpenseCraft.Application/ExpenseCraft.Application.csproj",
+      "packagesPath": "/home/lxkien/.nuget/packages/",
+      "outputPath": "/home/lxkien/projects/financial/financial_LXK/backend/ExpenseCraft.Application/obj/",
+      "projectStyle": "PackageReference",
+      "configFilePaths": [
+        "/home/lxkien/.nuget/NuGet/NuGet.Config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0"
+      ],
+      "sources": {
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "projectReferences": {
+            "/home/lxkien/projects/financial/financial_LXK/backend/ExpenseCraft.Domain/ExpenseCraft.Domain.csproj": {
+              "projectPath": "/home/lxkien/projects/financial/financial_LXK/backend/ExpenseCraft.Domain/ExpenseCraft.Domain.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      }
+    },
+    "frameworks": {
+      "net8.0": {
+        "targetAlias": "net8.0",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.421/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}
