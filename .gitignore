@@ -61,7 +61,7 @@ Thumbs.db
 # backend
 /backend/ExpenseCraft.Api/obj/
 /backend/ExpenseCraft.Api/bin/
-/bacnkend/ExpenseCraft.Application/obj/
+/backend/ExpenseCraft.Application/obj/
 /backend/ExpenseCraft.Application/bin/
 /backend/ExpenseCraft.Domain/obj/
 /backend/ExpenseCraft.Domain/bin/

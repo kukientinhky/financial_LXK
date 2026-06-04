@@ -1,10 +1,23 @@
+using ExpenseCraft.Application.Common.Security;
+using ExpenseCraft.Application.Users.Register;
+using ExpenseCraft.Domain.Users;
+using ExpenseCraft.Infrastructure.Persistence;
+using ExpenseCraft.Infrastructure.Security;
+using ExpenseCraft.Infrastructure.Users;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
 
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<RegisterHandler>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -16,29 +29,22 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
+app.MapPost("/api/users/register", async (
+    RegisterUserRequest request,
+    RegisterHandler handler,
+    CancellationToken cancellationToken) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    var result = await handler.HandleAsync(
+        new RegisterUserCommand(request.Email, request.Password),
+        cancellationToken);
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
+    return Results.Created($"/api/users/{result.UserId}", result);
 })
-.WithName("GetWeatherForecast")
+.WithName("RegisterUser")
 .WithOpenApi();
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+public sealed record RegisterUserRequest(
+    string Email,
+    string Password);
