@@ -1,3 +1,4 @@
+using ExpenseCraft.Application.Users;
 using ExpenseCraft.Domain.Users;
 using ExpenseCraft.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;

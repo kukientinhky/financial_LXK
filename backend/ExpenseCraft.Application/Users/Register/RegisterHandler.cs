@@ -1,4 +1,5 @@
 using ExpenseCraft.Application.Common.Security;
+using ExpenseCraft.Application.Users;
 using ExpenseCraft.Domain.Users;
 
 namespace ExpenseCraft.Application.Users.Register;

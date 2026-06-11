@@ -1,4 +1,5 @@
 using ExpenseCraft.Application.Common.Security;
+using ExpenseCraft.Application.Users;
 using ExpenseCraft.Application.Users.Register;
 using ExpenseCraft.Domain.Users;
 using ExpenseCraft.Infrastructure.Persistence;

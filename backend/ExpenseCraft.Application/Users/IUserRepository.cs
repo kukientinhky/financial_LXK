@@ -1,4 +1,6 @@
-namespace ExpenseCraft.Domain.Users;
+using ExpenseCraft.Domain.Users;
+
+namespace ExpenseCraft.Application.Users;
 
 public interface IUserRepository
 {
