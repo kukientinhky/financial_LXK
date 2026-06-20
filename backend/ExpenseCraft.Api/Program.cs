@@ -1,6 +1,7 @@
 using ExpenseCraft.Application.Common.Security;
 using ExpenseCraft.Application.Users;
 using ExpenseCraft.Application.Users.Register;
+using ExpenseCraft.Application.Users.Login;
 using ExpenseCraft.Domain.Users;
 using ExpenseCraft.Infrastructure.Persistence;
 using ExpenseCraft.Infrastructure.Security;
@@ -19,6 +20,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<RegisterHandler>();
+builder.Services.AddScoped<LoginHandler>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -44,8 +46,26 @@ app.MapPost("/api/users/register", async (
 .WithName("RegisterUser")
 .WithOpenApi();
 
+app.MapPost("/api/users/login", async (
+    LoginUserRequest request,
+    LoginHandler handler,
+    CancellationToken cancellationToken) =>
+{
+    var result = await handler.HandleAsync(
+        new LoginUserCommand(request.Email, request.Password),
+        cancellationToken);
+
+    return Results.Ok(result);
+})
+.WithName("LoginUser")
+.WithOpenApi();
+
 app.Run();
 
 public sealed record RegisterUserRequest(
+    string Email,
+    string Password);
+
+public sealed record LoginUserRequest(
     string Email,
     string Password);
