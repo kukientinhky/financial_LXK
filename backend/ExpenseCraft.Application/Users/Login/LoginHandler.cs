@@ -8,13 +8,15 @@ public sealed class LoginHandler
 {
     private readonly IUserRepository _userRepository;
     private readonly IPasswordHasher _passwordHasher;
-
+    private readonly ITokenProvider _tokenProvider;
     public LoginHandler(
         IUserRepository userRepository,
-        IPasswordHasher passwordHasher)
+        IPasswordHasher passwordHasher,
+        ITokenProvider tokenProvider)
     {
         _userRepository = userRepository;
         _passwordHasher = passwordHasher;
+        _tokenProvider = tokenProvider;
     }
 
     public async Task<LoginUserResult> HandleAsync(
@@ -32,6 +34,7 @@ public sealed class LoginHandler
         {
             throw new InvalidOperationException("Invalid email or password.");
         }
-        return new LoginUserResult(user.Id);
+        var accessToken = _tokenProvider.GenerateToken(user);
+        return new LoginUserResult(user.Id, accessToken );
     }
 }
