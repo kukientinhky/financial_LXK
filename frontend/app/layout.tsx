@@ -15,8 +15,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "ExpenseCraft Auth",
-  description: "Sign in or create an account for expense management.",
+  title: "ExpenseCraft - Quản lý thu chi",
+  description: "Đăng nhập và theo dõi tài chính cá nhân với ExpenseCraft.",
 };
 
 export default function RootLayout({

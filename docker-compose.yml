@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16
-    container_name: my-postgres
+    container_name: expensecraft-postgres
     restart: always
     environment:
       POSTGRES_USER: admin
@@ -14,13 +14,50 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: my-pgadmin
+    container_name: expensecraft-pgadmin
     restart: always
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@gmail.com
       PGADMIN_DEFAULT_PASSWORD: 123456
     ports:
       - "8080:80"
+    depends_on:
+      - postgres
+
+  backend:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    container_name: expensecraft-backend
+    working_dir: /src/backend
+    command: dotnet run --project ExpenseCraft.Api/ExpenseCraft.Api.csproj --urls http://0.0.0.0:8080
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Database: Host=postgres;Port=5432;Database=mydatabase;Username=admin;Password=123456
+      Jwt__Issuer: ExpenseCraft
+      Jwt__Audience: ExpenseCraft
+      Jwt__Secret: ExpenseCraftDevelopmentSecretKey123456789
+      Jwt__ExpirationInMinutes: 60
+    ports:
+      - "5000:8080"
+    volumes:
+      - ./backend:/src/backend
+    depends_on:
+      - postgres
+
+  frontend:
+    image: node:22
+    container_name: expensecraft-frontend
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
+  frontend_node_modules:

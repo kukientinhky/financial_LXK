@@ -1,211 +1,198 @@
-export default function Home() {
+"use client";
+
+import { FormEvent, useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+
+type AuthMode = "login" | "register";
+
+type LoginResponse = {
+  userId: string;
+  accessToken: string;
+};
+
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+
+export default function AuthPage() {
+  const router = useRouter();
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (localStorage.getItem("expensecraft_access_token")) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+
+    if (mode === "register" && password !== confirmPassword) {
+      setMessage("Mật khẩu xác nhận không khớp.");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        if (mode === "register") {
+          const registerResponse = await fetch(`${apiUrl}/api/users/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+
+          if (!registerResponse.ok) {
+            throw new Error(await readError(registerResponse));
+          }
+        }
+
+        const loginResponse = await fetch(`${apiUrl}/api/users/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (!loginResponse.ok) {
+          throw new Error(await readError(loginResponse));
+        }
+
+        const result = (await loginResponse.json()) as LoginResponse;
+        localStorage.setItem("expensecraft_access_token", result.accessToken);
+        localStorage.setItem("expensecraft_user_id", result.userId);
+        router.replace("/dashboard");
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Không thể xác thực tài khoản.");
+      }
+    });
+  }
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <main className="min-h-screen overflow-hidden">
       <div className="page-shell">
-        <header className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <section className="relative z-10 grid min-h-[calc(100vh-80px)] items-center gap-10 2xl:grid-cols-[1.12fr_0.88fr]">
           <div className="reveal" data-delay="1">
             <span className="badge">ExpenseCraft</span>
-            <h1 className="mt-4 text-4xl leading-tight sm:text-5xl">
-              Master your spending with clarity and calm.
+            <h1 className="mt-5 max-w-4xl text-5xl leading-[0.95] sm:text-6xl lg:text-7xl">
+              Quản lý thu chi rõ ràng, hiện đại và chủ động.
             </h1>
-            <p className="mt-3 max-w-xl text-base text-[color:var(--muted)]">
-              Sign in to review your dashboards or create a new account to start
-              tracking budgets, bills, and savings in one elegant place.
+            <p className="mt-6 max-w-xl text-lg leading-8 text-[color:var(--muted)]">
+              Đăng nhập để theo dõi ngân sách, dòng tiền, xu hướng chi tiêu và các tín hiệu tài chính quan trọng trong một không gian trực quan.
             </p>
+
+            <div className="mt-9 grid gap-4 sm:grid-cols-3">
+              {[
+                ["Độ rõ ngân sách", "92%"],
+                ["Hóa đơn theo dõi", "18"],
+                ["Tiết kiệm thông minh", "13,8tr"],
+              ].map(([label, value]) => (
+                <div className="stat-card" key={label}>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">{label}</p>
+                  <p className="mt-3 text-2xl font-semibold">{value}</p>
+                </div>
+              ))}
+            </div>
           </div>
+
           <div className="panel reveal" data-delay="2">
             <div className="panel-header">
               <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                  Weekly Pulse
+                <p className="text-sm uppercase tracking-[0.28em] text-[color:var(--accent-strong)]">
+                  {mode === "login" ? "Chào mừng trở lại" : "Bắt đầu theo dõi"}
                 </p>
-                <h2 className="mt-2 text-2xl">$1,284.60</h2>
-                <p className="text-sm text-[color:var(--muted)]">
-                  Smart insights keep spending on track.
-                </p>
+                <h2 className="mt-2 text-4xl">{mode === "login" ? "Đăng nhập" : "Tạo tài khoản"}</h2>
               </div>
-              <div className="text-right">
-                <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                  Auto-saved
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[color:var(--accent-strong)]">
-                  18%
-                </p>
-              </div>
-            </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="stat-card">
-                <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                  Bills
-                </p>
-                <p className="mt-3 text-xl font-semibold">$420</p>
-              </div>
-              <div className="stat-card">
-                <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                  Food
-                </p>
-                <p className="mt-3 text-xl font-semibold">$312</p>
-              </div>
-              <div className="stat-card">
-                <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                  Savings
-                </p>
-                <p className="mt-3 text-xl font-semibold">$552</p>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main className="page-grid lg:grid-cols-2">
-          <section className="panel reveal" data-delay="2">
-            <div className="panel-header">
-              <div>
-                <h2 className="text-3xl">Welcome back</h2>
-                <p className="mt-2 text-sm text-[color:var(--muted)]">
-                  Keep your cashflow in perfect balance.
-                </p>
-              </div>
-              <span className="badge">Sign In</span>
+              <button
+                className="ghost-button px-5"
+                type="button"
+                onClick={() => {
+                  setMode(mode === "login" ? "register" : "login");
+                  setMessage("");
+                }}
+              >
+                {mode === "login" ? "Đăng ký" : "Đăng nhập"}
+              </button>
             </div>
 
-            <form className="mt-8 grid gap-5">
+            <form className="mt-8 grid gap-5" onSubmit={submitAuth}>
               <div className="field">
-                <label htmlFor="signin-email">Email address</label>
+                <label htmlFor="email">Địa chỉ email</label>
                 <input
-                  id="signin-email"
+                  id="email"
                   name="email"
                   type="email"
-                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="ban@email.com"
                   autoComplete="email"
+                  required
                 />
               </div>
+
               <div className="field">
-                <label htmlFor="signin-password">Password</label>
+                <label htmlFor="password">Mật khẩu</label>
                 <input
-                  id="signin-password"
+                  id="password"
                   name="password"
                   type="password"
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Tối thiểu 8 ký tự"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  required
+                  minLength={8}
                 />
               </div>
-              <div className="flex items-center justify-between text-sm text-[color:var(--muted)]">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="accent-[#f2c37c]" />
-                  Remember me
-                </label>
-                <button type="button" className="text-[color:var(--accent-strong)]">
-                  Forgot password?
-                </button>
-              </div>
-              <button type="submit" className="action-button">
-                Sign in to dashboard
-              </button>
-              <button type="button" className="ghost-button">
-                Send a one-time login link
-              </button>
-            </form>
-          </section>
 
-          <section className="panel reveal" data-delay="3">
-            <div className="panel-header">
-              <div>
-                <h2 className="text-3xl">Create your account</h2>
-                <p className="mt-2 text-sm text-[color:var(--muted)]">
-                  Build a smarter plan for every month.
-                </p>
-              </div>
-              <span className="badge">Sign Up</span>
-            </div>
-
-            <form className="mt-8 grid gap-5">
-              <div className="grid gap-5 sm:grid-cols-2">
+              {mode === "register" ? (
                 <div className="field">
-                  <label htmlFor="signup-name">Full name</label>
+                  <label htmlFor="confirm-password">Xác nhận mật khẩu</label>
                   <input
-                    id="signup-name"
-                    name="name"
-                    type="text"
-                    placeholder="Alex Morgan"
-                    autoComplete="name"
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="signup-phone">Phone</label>
-                  <input
-                    id="signup-phone"
-                    name="phone"
-                    type="tel"
-                    placeholder="+1 555 390 2244"
-                    autoComplete="tel"
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="signup-email">Email address</label>
-                <input
-                  id="signup-email"
-                  name="email"
-                  type="email"
-                  placeholder="you@company.com"
-                  autoComplete="email"
-                />
-              </div>
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div className="field">
-                  <label htmlFor="signup-password">Password</label>
-                  <input
-                    id="signup-password"
-                    name="password"
-                    type="password"
-                    placeholder="Create a password"
-                    autoComplete="new-password"
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="signup-confirm">Confirm password</label>
-                  <input
-                    id="signup-confirm"
+                    id="confirm-password"
                     name="confirmPassword"
                     type="password"
-                    placeholder="Repeat password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    placeholder="Nhập lại mật khẩu"
                     autoComplete="new-password"
+                    required
+                    minLength={8}
                   />
                 </div>
-              </div>
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div className="field">
-                  <label htmlFor="signup-currency">Default currency</label>
-                  <select id="signup-currency" name="currency" defaultValue="USD">
-                    <option value="USD">USD - US Dollar</option>
-                    <option value="EUR">EUR - Euro</option>
-                    <option value="GBP">GBP - British Pound</option>
-                    <option value="JPY">JPY - Japanese Yen</option>
-                    <option value="VND">VND - Vietnamese Dong</option>
-                  </select>
+              ) : null}
+
+              {message ? (
+                <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                  {message}
                 </div>
-                <div className="field">
-                  <label htmlFor="signup-budget">Monthly budget</label>
-                  <input
-                    id="signup-budget"
-                    name="budget"
-                    type="number"
-                    placeholder="1500"
-                    min="0"
-                  />
-                </div>
-              </div>
-              <label className="flex items-start gap-3 text-sm text-[color:var(--muted)]">
-                <input type="checkbox" className="mt-1 accent-[#f2c37c]" />
-                I agree to the terms and confirm I am at least 18 years old.
-              </label>
-              <button type="submit" className="action-button">
-                Create account
+              ) : null}
+
+              <button className="action-button" type="submit" disabled={isPending}>
+                {isPending ? "Đang xử lý..." : mode === "login" ? "Đăng nhập vào trang chủ" : "Tạo tài khoản và vào trang chủ"}
               </button>
             </form>
-          </section>
-        </main>
+
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
+}
+
+async function readError(response: Response) {
+  const text = await response.text();
+
+  if (!text) {
+    return `Yêu cầu thất bại với mã ${response.status}.`;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as { title?: string; detail?: string };
+    return parsed.detail ?? parsed.title ?? text;
+  } catch {
+    return text;
+  }
 }

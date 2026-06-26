@@ -19,10 +19,24 @@
   --font-display: var(--font-title);
 }
 
+html,
+body {
+  width: 100%;
+  min-width: 100vw;
+  margin: 0;
+  overflow-x: hidden;
+}
+
 body {
   background: radial-gradient(circle at top, #1f2430 0%, #0d0f12 55%);
   color: var(--ink);
   font-family: var(--font-body), "Segoe UI", sans-serif;
+  min-height: 100vh;
+}
+
+main {
+  width: 100vw;
+  min-width: 100vw;
 }
 
 h1,
@@ -34,9 +48,11 @@ h3 {
 
 .page-shell {
   position: relative;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 48px 20px 72px;
+  width: 100vw;
+  min-width: 100vw;
+  min-height: 100vh;
+  margin: 0;
+  padding: 32px clamp(20px, 4vw, 72px) 48px;
 }
 
 .page-shell::before {
