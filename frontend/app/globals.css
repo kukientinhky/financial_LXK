@@ -1,22 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #0d0f12;
-  --panel: #151a22;
-  --panel-soft: #1b2130;
-  --ink: #f5f1ea;
-  --muted: #b6b2aa;
-  --accent: #e7b36a;
-  --accent-strong: #ffdf9a;
-  --line: rgba(255, 255, 255, 0.08);
-  --shadow: 0 24px 60px rgba(4, 7, 12, 0.6);
+  --bg: #F5F7FA;
+  --panel: #FFFFFF;
+  --panel-soft: #F5F7FA;
+  --ink: #1A1C1E;
+  --muted: #6C7278;
+  --primary: #1565C0;
+  --secondary: #546E7A;
+  --accent: #00A6A6;
+  --accent-strong: #00A6A6;
+  --success: #2E7D32;
+  --warning: #F9A825;
+  --danger: #C62828;
+  --line: #E0E0E0;
+  --on-primary: #FFFFFF;
+  --on-accent: #FFFFFF;
 }
 
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--ink);
   --font-sans: var(--font-body);
-  --font-display: var(--font-title);
+  --font-display: var(--font-body);
 }
 
 html,
@@ -28,7 +34,7 @@ body {
 }
 
 body {
-  background: radial-gradient(circle at top, #1f2430 0%, #0d0f12 55%);
+  background: var(--bg);
   color: var(--ink);
   font-family: var(--font-body), "Segoe UI", sans-serif;
   min-height: 100vh;
@@ -42,7 +48,7 @@ main {
 h1,
 h2,
 h3 {
-  font-family: var(--font-title), serif;
+  font-family: var(--font-body), "Segoe UI", sans-serif;
   letter-spacing: -0.02em;
 }
 
@@ -52,7 +58,7 @@ h3 {
   min-width: 100vw;
   min-height: 100vh;
   margin: 0;
-  padding: 32px clamp(20px, 4vw, 72px) 48px;
+  padding: 32px clamp(16px, 4vw, 48px) 48px;
 }
 
 .page-shell::before {
@@ -60,11 +66,10 @@ h3 {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 15% 20%, rgba(231, 179, 106, 0.18), transparent 45%),
-    radial-gradient(circle at 85% 10%, rgba(90, 170, 255, 0.2), transparent 35%),
-    radial-gradient(circle at 80% 75%, rgba(255, 231, 186, 0.1), transparent 40%);
+    radial-gradient(circle at 15% 20%, rgba(21, 101, 192, 0.1), transparent 42%),
+    radial-gradient(circle at 85% 10%, rgba(0, 166, 166, 0.1), transparent 36%);
   pointer-events: none;
-  opacity: 0.9;
+  opacity: 1;
 }
 
 .page-grid {
@@ -75,12 +80,10 @@ h3 {
 }
 
 .panel {
-  background: linear-gradient(145deg, rgba(27, 33, 48, 0.96), rgba(15, 18, 26, 0.96));
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 24px;
-  padding: 28px;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 24px;
 }
 
 .panel-header {
@@ -94,10 +97,10 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: rgba(231, 179, 106, 0.12);
-  color: var(--accent-strong);
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--primary);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -118,61 +121,88 @@ h3 {
 }
 
 .field input,
-.field select {
-  height: 46px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(8, 10, 16, 0.7);
+.field select,
+.field textarea {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
   color: var(--ink);
-  padding: 0 14px;
+  padding: 12px;
   font-size: 14px;
   transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
+.field input,
+.field select {
+  height: 46px;
+}
+
+.field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: none;
-  border-color: rgba(231, 179, 106, 0.7);
-  box-shadow: 0 0 0 3px rgba(231, 179, 106, 0.18);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.12);
 }
 
 .action-button {
   height: 48px;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 0;
-  background: linear-gradient(120deg, #f2c37c 0%, #ffe2ad 50%, #f2c37c 100%);
-  color: #1d1a14;
+  background: var(--primary);
+  color: var(--on-primary);
   font-weight: 600;
   letter-spacing: 0.02em;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 16px 30px rgba(231, 179, 106, 0.25);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .action-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 34px rgba(231, 179, 106, 0.35);
+  opacity: 0.92;
+  transform: translateY(-1px);
 }
 
 .ghost-button {
   height: 44px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: transparent;
-  color: var(--ink);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--secondary);
   font-weight: 500;
-  transition: border 0.2s ease, background 0.2s ease;
+  transition: border 0.2s ease, color 0.2s ease, opacity 0.2s ease;
 }
 
 .ghost-button:hover {
-  border-color: rgba(231, 179, 106, 0.5);
-  background: rgba(231, 179, 106, 0.08);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
-.stat-card {
-  border-radius: 20px;
-  border: 1px solid var(--line);
-  padding: 18px;
-  background: rgba(15, 18, 26, 0.7);
+.danger-button {
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--danger);
+  background: var(--panel);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 12px;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.danger-button:hover {
+  background: var(--danger);
+  color: var(--on-primary);
+}
+
+.action-button:disabled,
+.ghost-button:disabled,
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .reveal {

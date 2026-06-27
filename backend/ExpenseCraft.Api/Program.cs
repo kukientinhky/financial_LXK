@@ -1,16 +1,23 @@
+using ExpenseCraft.Application.Chat;
 using ExpenseCraft.Application.Common.Security;
+using ExpenseCraft.Application.Transactions;
+using ExpenseCraft.Application.Transactions.Analytics;
+using ExpenseCraft.Application.Transactions.Create;
+using ExpenseCraft.Application.Transactions.Delete;
+using ExpenseCraft.Application.Transactions.Get;
 using ExpenseCraft.Application.Users;
-using ExpenseCraft.Application.Users.Register;
 using ExpenseCraft.Application.Users.Login;
-using ExpenseCraft.Domain.Users;
+using ExpenseCraft.Application.Users.Register;
+using ExpenseCraft.Infrastructure.Chat;
 using ExpenseCraft.Infrastructure.Persistence;
 using ExpenseCraft.Infrastructure.Security;
+using ExpenseCraft.Infrastructure.Transactions;
 using ExpenseCraft.Infrastructure.Users;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -59,11 +66,26 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+builder.Services.AddScoped<IChatMessageRepository, ChatMessageRepository>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<ITokenProvider, JwtTokenProvider>();
 builder.Services.AddScoped<RegisterHandler>();
 builder.Services.AddScoped<LoginHandler>();
+builder.Services.AddScoped<CreateTransactionHandler>();
+builder.Services.AddScoped<GetTransactionsHandler>();
+builder.Services.AddScoped<DeleteTransactionHandler>();
+builder.Services.AddScoped<GetAnalyticsSummaryHandler>();
+builder.Services.AddScoped<GetChatMessagesHandler>();
+builder.Services.AddScoped<SaveChatMessageHandler>();
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    using var migrationScope = app.Services.CreateScope();
+    var dbContext = migrationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -71,6 +93,26 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (ArgumentException ex)
+    {
+        await WriteProblemAsync(context, StatusCodes.Status400BadRequest, "Invalid request", ex.Message);
+    }
+    catch (KeyNotFoundException ex)
+    {
+        await WriteProblemAsync(context, StatusCodes.Status404NotFound, "Not found", ex.Message);
+    }
+    catch (InvalidOperationException ex)
+    {
+        await WriteProblemAsync(context, StatusCodes.Status400BadRequest, "Invalid operation", ex.Message);
+    }
+});
 
 app.UseHttpsRedirection();
 app.UseCors(FrontendCorsPolicy);
@@ -104,7 +146,9 @@ app.MapPost("/api/users/login", async (
 .WithName("LoginUser")
 .WithOpenApi();
 
-app.MapGet("/api/users/me", (ClaimsPrincipal user) =>
+var authorizedApi = app.MapGroup("/api").RequireAuthorization();
+
+authorizedApi.MapGet("/users/me", (ClaimsPrincipal user) =>
 {
     return Results.Ok(new
     {
@@ -112,9 +156,201 @@ app.MapGet("/api/users/me", (ClaimsPrincipal user) =>
         Email = user.FindFirstValue(ClaimTypes.Email)
     });
 })
-.RequireAuthorization()
 .WithName("GetCurrentUser")
 .WithOpenApi();
+
+authorizedApi.MapPost("/agent/tools/income", async (
+    AgentTransactionRequest request,
+    ClaimsPrincipal user,
+    CreateTransactionHandler handler,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetUserId(user, out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var result = await handler.HandleAsync(
+        new CreateTransactionCommand(
+            userId,
+            "income",
+            request.Amount,
+            request.Currency,
+            request.Category,
+            request.Note,
+            DefaultAgentSource(request.Source),
+            request.OccurredAt),
+        cancellationToken);
+
+    return Results.Created($"/api/transactions/{result.Id}", result);
+})
+.WithName("CreateIncomeFromAgentTool")
+.WithOpenApi();
+
+authorizedApi.MapPost("/agent/tools/expense", async (
+    AgentTransactionRequest request,
+    ClaimsPrincipal user,
+    CreateTransactionHandler handler,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetUserId(user, out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var result = await handler.HandleAsync(
+        new CreateTransactionCommand(
+            userId,
+            "expense",
+            request.Amount,
+            request.Currency,
+            request.Category,
+            request.Note,
+            DefaultAgentSource(request.Source),
+            request.OccurredAt),
+        cancellationToken);
+
+    return Results.Created($"/api/transactions/{result.Id}", result);
+})
+.WithName("CreateExpenseFromAgentTool")
+.WithOpenApi();
+
+authorizedApi.MapGet("/transactions", async (
+    int? limit,
+    ClaimsPrincipal user,
+    GetTransactionsHandler handler,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetUserId(user, out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var result = await handler.HandleAsync(
+        new GetTransactionsQuery(userId, limit ?? 20),
+        cancellationToken);
+
+    return Results.Ok(result);
+})
+.WithName("GetTransactions")
+.WithOpenApi();
+
+authorizedApi.MapDelete("/transactions/{id:guid}", async (
+    Guid id,
+    ClaimsPrincipal user,
+    DeleteTransactionHandler handler,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetUserId(user, out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var deleted = await handler.HandleAsync(
+        new DeleteTransactionCommand(userId, id),
+        cancellationToken);
+
+    return deleted ? Results.NoContent() : Results.NotFound();
+})
+.WithName("DeleteTransaction")
+.WithOpenApi();
+
+authorizedApi.MapGet("/analytics/summary", async (
+    DateOnly from,
+    DateOnly to,
+    ClaimsPrincipal user,
+    GetAnalyticsSummaryHandler handler,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetUserId(user, out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var result = await handler.HandleAsync(
+        new GetAnalyticsSummaryQuery(userId, from, to),
+        cancellationToken);
+
+    return Results.Ok(result);
+})
+.WithName("GetAnalyticsSummary")
+.WithOpenApi();
+
+authorizedApi.MapGet("/chat/messages", async (
+    int? limit,
+    ClaimsPrincipal user,
+    GetChatMessagesHandler handler,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetUserId(user, out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var result = await handler.HandleAsync(
+        new GetChatMessagesQuery(userId, limit ?? 50),
+        cancellationToken);
+
+    return Results.Ok(result);
+})
+.WithName("GetChatMessages")
+.WithOpenApi();
+
+authorizedApi.MapPost("/chat/messages", async (
+    SaveChatMessageRequest request,
+    ClaimsPrincipal user,
+    SaveChatMessageHandler handler,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetUserId(user, out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var result = await handler.HandleAsync(
+        new SaveChatMessageCommand(
+            userId,
+            request.Role,
+            request.Content,
+            request.Intent,
+            request.TransactionId),
+        cancellationToken);
+
+    return Results.Created($"/api/chat/messages/{result.Id}", result);
+})
+.WithName("SaveChatMessage")
+.WithOpenApi();
+
+static bool TryGetUserId(ClaimsPrincipal user, out Guid userId)
+{
+    var userIdValue = user.FindFirstValue(ClaimTypes.NameIdentifier);
+    return Guid.TryParse(userIdValue, out userId);
+}
+
+static string DefaultAgentSource(string? source)
+{
+    return string.IsNullOrWhiteSpace(source) ? "agent" : source;
+}
+
+static Task WriteProblemAsync(
+    HttpContext context,
+    int statusCode,
+    string title,
+    string detail)
+{
+    if (context.Response.HasStarted)
+    {
+        throw new InvalidOperationException("Cannot write problem response because the response has already started.");
+    }
+
+    context.Response.Clear();
+
+    return Results.Problem(
+        title: title,
+        detail: detail,
+        statusCode: statusCode)
+        .ExecuteAsync(context);
+}
 
 app.Run();
 
@@ -125,3 +361,17 @@ public sealed record RegisterUserRequest(
 public sealed record LoginUserRequest(
     string Email,
     string Password);
+
+public sealed record AgentTransactionRequest(
+    decimal Amount,
+    string? Currency,
+    string Category,
+    string? Note,
+    string? Source,
+    DateTimeOffset? OccurredAt);
+
+public sealed record SaveChatMessageRequest(
+    string Role,
+    string Content,
+    string? Intent,
+    Guid? TransactionId);

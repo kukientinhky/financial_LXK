@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type CurrentUser = {
@@ -8,98 +8,366 @@ type CurrentUser = {
   email: string | null;
 };
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+type AnalyticsSummary = {
+  totalIncome: number;
+  totalExpense: number;
+  net: number;
+  currency: string;
+  cashflowByMonth: CashflowByMonth[];
+  expenseByCategory: ExpenseByCategory[];
+  reasonableness: Reasonableness;
+};
 
-const monthlyCashflow = [
-  { month: "T1", income: 4200, expenses: 2860 },
-  { month: "T2", income: 4380, expenses: 3140 },
-  { month: "T3", income: 4520, expenses: 3020 },
-  { month: "T4", income: 4750, expenses: 3375 },
-  { month: "T5", income: 4860, expenses: 3190 },
-  { month: "T6", income: 5100, expenses: 3420 },
-];
+type CashflowByMonth = {
+  month: string;
+  income: number;
+  expense: number;
+  net: number;
+};
 
-const categories = [
-  { name: "Nhà ở", amount: 1180, color: "#f2c37c" },
-  { name: "Ăn uống", amount: 520, color: "#7dd3fc" },
-  { name: "Di chuyển", amount: 340, color: "#c4b5fd" },
-  { name: "Mua sắm", amount: 410, color: "#fda4af" },
-  { name: "Tiết kiệm", amount: 780, color: "#86efac" },
-];
+type ExpenseByCategory = {
+  category: string;
+  amount: number;
+  percent: number;
+};
 
-const transactions = [
-  ["Lương tháng", "Thu nhập", "+127,5tr", "Hôm nay"],
-  ["Tiền thuê nhà", "Nhà ở", "-29,5tr", "20/06"],
-  ["Đi siêu thị", "Ăn uống", "-3,1tr", "18/06"],
-  ["Quỹ đầu tư", "Tiết kiệm", "-11,2tr", "15/06"],
-  ["Tiền điện", "Hóa đơn", "-2,2tr", "14/06"],
-];
+type Reasonableness = {
+  status: string;
+  message: string;
+  expenseRatio: number | null;
+  categoryWarnings: CategoryWarning[];
+};
+
+type CategoryWarning = {
+  category: string;
+  amount: number;
+  percent: number;
+  message: string;
+};
+
+type Transaction = {
+  id: string;
+  type: "income" | "expense" | string;
+  amount: number;
+  currency: string;
+  category: string;
+  note: string | null;
+  source: string | null;
+  occurredAt: string;
+  createdAt: string;
+};
+
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant" | string;
+  content: string;
+  intent: AgentIntent | string | null;
+  transactionId: string | null;
+  createdAt: string;
+  pending?: boolean;
+  historySaveFailed?: boolean;
+  warning?: string | null;
+};
+
+type AgentResponse = {
+  reply: string;
+  intent: AgentIntent | string | null;
+  transaction: Record<string, unknown> | null;
+  history_save_failed: boolean;
+  warning: string | null;
+};
+
+type AgentIntent = "income" | "expense";
+
+const tokenStorageKey = "expensecraft_access_token";
+const legacyUserIdStorageKey = "expensecraft_user_id";
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5000";
+const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL ?? "http://localhost:8000";
+
+class AuthExpiredError extends Error {}
 
 export default function DashboardPage() {
   const router = useRouter();
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [dashboardError, setDashboardError] = useState("");
+  const [chatError, setChatError] = useState("");
+  const [chatWarning, setChatWarning] = useState("");
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const analyticsRange = useMemo(() => getAnalyticsRange(), []);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem(tokenStorageKey);
+    localStorage.removeItem(legacyUserIdStorageKey);
+    router.replace("/");
+  }, [router]);
+
+  const handleAuthError = useCallback(() => {
+    localStorage.removeItem(tokenStorageKey);
+    localStorage.removeItem(legacyUserIdStorageKey);
+    router.replace("/");
+  }, [router]);
+
+  const loadDashboardData = useCallback(
+    async (activeToken: string) => {
+      setIsDashboardLoading(true);
+      setDashboardError("");
+
+      try {
+        const [summaryResult, transactionResult] = await Promise.all([
+          fetchJson<AnalyticsSummary>(
+            `${apiBaseUrl}/api/analytics/summary?from=${analyticsRange.from}&to=${analyticsRange.to}`,
+            activeToken,
+          ),
+          fetchJson<Transaction[]>(`${apiBaseUrl}/api/transactions?limit=20`, activeToken),
+        ]);
+
+        setSummary(summaryResult);
+        setTransactions(transactionResult);
+      } catch (error) {
+        if (error instanceof AuthExpiredError) {
+          handleAuthError();
+          return;
+        }
+
+        setDashboardError(error instanceof Error ? error.message : "Không thể tải dữ liệu tài chính.");
+      } finally {
+        setIsDashboardLoading(false);
+      }
+    },
+    [analyticsRange.from, analyticsRange.to, handleAuthError],
+  );
+
+  const loadChatMessages = useCallback(
+    async (activeToken: string) => {
+      setIsChatLoading(true);
+      setChatError("");
+
+      try {
+        const result = await fetchJson<ChatMessage[]>(`${apiBaseUrl}/api/chat/messages?limit=50`, activeToken);
+        setChatMessages((current) => mergePersistedChatWithLocalWarnings(result, current));
+      } catch (error) {
+        if (error instanceof AuthExpiredError) {
+          handleAuthError();
+          return;
+        }
+
+        setChatError(error instanceof Error ? error.message : "Không thể tải lịch sử trò chuyện.");
+      } finally {
+        setIsChatLoading(false);
+      }
+    },
+    [handleAuthError],
+  );
+
+  const refreshDashboardContext = useCallback(
+    async (activeToken: string) => {
+      await Promise.all([loadDashboardData(activeToken), loadChatMessages(activeToken)]);
+    },
+    [loadDashboardData, loadChatMessages],
+  );
 
   useEffect(() => {
-    const token = localStorage.getItem("expensecraft_access_token");
+    const storedToken = localStorage.getItem(tokenStorageKey);
 
-    if (!token) {
+    if (!storedToken) {
       router.replace("/");
       return;
     }
 
-    async function loadUser() {
-      try {
-        const response = await fetch(`${apiUrl}/api/users/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+    const activeToken = storedToken;
 
-        if (!response.ok) {
-          throw new Error("Phiên đăng nhập đã hết hạn.");
+    async function loadInitialData() {
+      try {
+        const currentUser = await fetchJson<CurrentUser>(`${apiBaseUrl}/api/users/me`, activeToken);
+        setUser(currentUser);
+        setAuthChecked(true);
+        await refreshDashboardContext(activeToken);
+      } catch (error) {
+        setAuthChecked(true);
+
+        if (error instanceof AuthExpiredError) {
+          handleAuthError();
+          return;
         }
 
-        setUser((await response.json()) as CurrentUser);
-      } catch {
-        localStorage.removeItem("expensecraft_access_token");
-        localStorage.removeItem("expensecraft_user_id");
-        router.replace("/");
-      } finally {
-        setAuthChecked(true);
+        setDashboardError(error instanceof Error ? error.message : "Không thể xác thực phiên đăng nhập.");
       }
     }
 
-    loadUser();
-  }, [router]);
+    loadInitialData();
+  }, [handleAuthError, refreshDashboardContext, router]);
 
-  function logout() {
-    localStorage.removeItem("expensecraft_access_token");
-    localStorage.removeItem("expensecraft_user_id");
-    router.replace("/");
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ block: "end" });
+  }, [chatMessages]);
+
+  async function sendChatMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const activeToken = localStorage.getItem(tokenStorageKey);
+    const message = chatInput.trim();
+
+    if (!activeToken) {
+      setChatError("Bạn cần đăng nhập lại để trò chuyện với trợ lý.");
+      handleAuthError();
+      return;
+    }
+
+    if (!message || isSendingChat) {
+      return;
+    }
+
+    const localUserMessage: ChatMessage = {
+      id: `local-user-${Date.now()}`,
+      role: "user",
+      content: message,
+      intent: null,
+      transactionId: null,
+      createdAt: new Date().toISOString(),
+      pending: true,
+    };
+
+    setChatInput("");
+    setChatError("");
+    setChatWarning("");
+    setIsSendingChat(true);
+    setChatMessages((current) => [...current, localUserMessage]);
+
+    try {
+      const response = await fetch(`${agentUrl}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${activeToken}`,
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      if (response.status === 401) {
+        throw new AuthExpiredError("Phiên đăng nhập đã hết hạn.");
+      }
+
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
+
+      const result = (await response.json()) as AgentResponse;
+      const historySaveFailed = result.history_save_failed === true;
+      const warning = historySaveFailed ? buildHistorySaveWarning(result.warning) : null;
+      const localAssistantMessage: ChatMessage = {
+        id: `local-assistant-${Date.now()}`,
+        role: "assistant",
+        content: result.reply,
+        intent: normalizeAgentIntent(result.intent),
+        transactionId: getTransactionId(result.transaction),
+        createdAt: new Date().toISOString(),
+        pending: !historySaveFailed,
+        historySaveFailed,
+        warning,
+      };
+
+      setChatMessages((current) => [...current, localAssistantMessage]);
+      if (warning) {
+        setChatWarning(warning);
+      }
+      await refreshDashboardContext(activeToken);
+      if (historySaveFailed) {
+        setChatMessages((current) => upsertLocalWarningMessage(current, localAssistantMessage));
+      }
+    } catch (error) {
+      if (error instanceof AuthExpiredError) {
+        handleAuthError();
+        return;
+      }
+
+      setChatError(error instanceof Error ? error.message : "Không thể gửi tin nhắn đến trợ lý.");
+      setChatMessages((current) => current.map((item) => (item.id === localUserMessage.id ? { ...item, pending: false } : item)));
+    } finally {
+      setIsSendingChat(false);
+    }
+  }
+
+  async function deleteTransaction(transaction: Transaction) {
+    const activeToken = localStorage.getItem(tokenStorageKey);
+
+    if (!activeToken) {
+      handleAuthError();
+      return;
+    }
+
+    const accepted = window.confirm(
+      `Xóa giao dịch chi tiêu "${transaction.note || transaction.category}"? Hành động này sẽ cập nhật lại dashboard.`,
+    );
+
+    if (!accepted) {
+      return;
+    }
+
+    setDeletingId(transaction.id);
+    setDashboardError("");
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/transactions/${transaction.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${activeToken}` },
+      });
+
+      if (response.status === 401) {
+        throw new AuthExpiredError("Phiên đăng nhập đã hết hạn.");
+      }
+
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
+
+      await refreshDashboardContext(activeToken);
+    } catch (error) {
+      if (error instanceof AuthExpiredError) {
+        handleAuthError();
+        return;
+      }
+
+      setDashboardError(error instanceof Error ? error.message : "Không thể xóa giao dịch.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   if (!authChecked) {
     return (
-      <main className="grid min-h-screen place-items-center text-[color:var(--muted)]">
+      <main className="grid min-h-screen place-items-center bg-[color:var(--bg)] text-[color:var(--muted)]">
         Đang chuẩn bị bảng điều khiển tài chính...
       </main>
     );
   }
 
-  const income = 5100;
-  const expenses = 3420;
-  const savings = income - expenses;
-  const maxCashflow = Math.max(...monthlyCashflow.flatMap((item) => [item.income, item.expenses]));
-  const categoryTotal = categories.reduce((total, item) => total + item.amount, 0);
+  const cashflow = normalizeCashflow(summary?.cashflowByMonth ?? [], analyticsRange.from);
+  const maxCashflow = Math.max(1, ...cashflow.flatMap((item) => [item.income, item.expense]));
+  const categories = summary?.expenseByCategory ?? [];
+  const reasonableness = summary?.reasonableness ?? null;
+  const expenseRatioPercent = Math.min(100, Math.round((reasonableness?.expenseRatio ?? 0) * 100));
 
   return (
-    <main className="min-h-screen overflow-hidden">
+    <main className="min-h-screen overflow-hidden bg-[color:var(--bg)]">
       <div className="page-shell">
         <header className="relative z-10 mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <span className="badge">Trang chủ</span>
-            <h1 className="mt-4 text-5xl leading-none sm:text-6xl">Bảng điều khiển tài chính.</h1>
+            <h1 className="mt-4 text-[2rem] font-bold leading-[2.5rem] text-[color:var(--ink)] sm:text-5xl sm:leading-tight">
+              Bảng điều khiển tài chính
+            </h1>
             <p className="mt-4 text-[color:var(--muted)]">
-              Đang đăng nhập với <span className="text-[color:var(--accent-strong)]">{user?.email}</span>
+              Đang đăng nhập với <span className="font-medium text-[color:var(--primary)]">{user?.email ?? "tài khoản của bạn"}</span>
             </p>
           </div>
           <button className="ghost-button px-6" type="button" onClick={logout}>
@@ -107,111 +375,249 @@ export default function DashboardPage() {
           </button>
         </header>
 
-        <section className="page-grid relative z-10 grid-cols-1 xl:grid-cols-[1.45fr_0.85fr]">
+        {dashboardError ? <AlertMessage message={dashboardError} /> : null}
+
+        <section className="page-grid relative z-10 grid-cols-1 xl:grid-cols-[1.35fr_0.95fr]">
           <div className="grid gap-6">
             <div className="grid gap-4 md:grid-cols-3">
-              <MetricCard label="Thu nhập" value="127,5tr" delta="+8,2%" tone="positive" />
-              <MetricCard label="Chi tiêu" value="85,5tr" delta="-3,4%" tone="warning" />
-              <MetricCard label="Tiết kiệm ròng" value={`${savings.toLocaleString()}tr`} delta="Đã tiết kiệm 32,9%" tone="positive" />
+              <MetricCard
+                label="Thu nhập"
+                value={formatCurrency(summary?.totalIncome ?? 0, summary?.currency)}
+                helper={summary ? "Từ giao dịch thực tế" : "Đang chờ dữ liệu"}
+                tone="positive"
+              />
+              <MetricCard
+                label="Chi tiêu"
+                value={formatCurrency(summary?.totalExpense ?? 0, summary?.currency)}
+                helper={reasonableness?.expenseRatio !== null && reasonableness ? `Bằng ${expenseRatioPercent}% thu nhập` : "Cần thêm dữ liệu thu nhập"}
+                tone="warning"
+              />
+              <MetricCard
+                label="Dòng tiền ròng"
+                value={formatCurrency(summary?.net ?? 0, summary?.currency)}
+                helper={(summary?.net ?? 0) >= 0 ? "Đang dương" : "Đang âm"}
+                tone={(summary?.net ?? 0) >= 0 ? "positive" : "danger"}
+              />
             </div>
 
             <div className="panel">
-              <div className="panel-header">
+              <div className="panel-header flex-col items-start sm:flex-row sm:items-center">
                 <div>
-                  <h2 className="text-3xl">Nhịp dòng tiền</h2>
-                  <p className="mt-2 text-sm text-[color:var(--muted)]">So sánh thu nhập và chi tiêu trong 6 tháng gần nhất.</p>
+                  <h2 className="text-2xl font-semibold text-[color:var(--ink)]">Dòng tiền theo tháng</h2>
+                  <p className="mt-2 text-sm text-[color:var(--muted)]">Thu nhập và chi tiêu trong 6 tháng gần nhất từ dữ liệu thật.</p>
                 </div>
-                <span className="badge">Theo dõi mẫu</span>
+                <span className="badge">{formatRange(analyticsRange.from, analyticsRange.to)}</span>
               </div>
-              <div className="mt-8 flex h-72 items-end gap-4 overflow-hidden rounded-[22px] border border-white/10 bg-black/20 p-5">
-                {monthlyCashflow.map((item) => (
-                  <div className="flex flex-1 flex-col items-center gap-3" key={item.month}>
-                    <div className="flex h-56 w-full items-end justify-center gap-2">
-                      <div
-                        className="w-full max-w-8 rounded-t-full bg-gradient-to-t from-[#d79a42] to-[#ffe2ad] shadow-[0_0_24px_rgba(242,195,124,0.22)]"
-                        style={{ height: `${(item.income / maxCashflow) * 100}%` }}
-                      />
-                      <div
-                        className="w-full max-w-8 rounded-t-full bg-gradient-to-t from-[#475569] to-[#93a4ba]"
-                        style={{ height: `${(item.expenses / maxCashflow) * 100}%` }}
-                      />
+
+              {isDashboardLoading && !summary ? (
+                <LoadingState label="Đang tải biểu đồ dòng tiền..." />
+              ) : cashflow.every((item) => item.income === 0 && item.expense === 0) ? (
+                <EmptyState label="Chưa có giao dịch trong khoảng thời gian này." />
+              ) : (
+                <div className="mt-8 flex h-72 items-end gap-3 overflow-x-auto rounded-lg border border-[color:var(--line)] bg-[color:var(--panel-soft)] p-4 sm:gap-4">
+                  {cashflow.map((item) => (
+                    <div className="flex min-w-16 flex-1 flex-col items-center gap-3" key={item.month}>
+                      <div className="flex h-52 w-full items-end justify-center gap-2">
+                        <div
+                          className="w-full max-w-8 rounded-t-md bg-[color:var(--success)]"
+                          title={`Thu nhập ${formatCurrency(item.income, summary?.currency)}`}
+                          style={{ height: `${(item.income / maxCashflow) * 100}%` }}
+                        />
+                        <div
+                          className="w-full max-w-8 rounded-t-md bg-[color:var(--danger)]"
+                          title={`Chi tiêu ${formatCurrency(item.expense, summary?.currency)}`}
+                          style={{ height: `${(item.expense / maxCashflow) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium uppercase tracking-[0.08em] text-[color:var(--muted)]">{formatMonth(item.month)}</span>
                     </div>
-                    <span className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">{item.month}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-5 flex gap-5 text-sm text-[color:var(--muted)]">
-                <span><i className="mr-2 inline-block h-3 w-3 rounded-full bg-[#f2c37c]" />Thu nhập</span>
-                <span><i className="mr-2 inline-block h-3 w-3 rounded-full bg-[#93a4ba]" />Chi tiêu</span>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-wrap gap-5 text-sm text-[color:var(--muted)]">
+                <span><i className="mr-2 inline-block h-3 w-3 rounded-sm bg-[color:var(--success)]" />Thu nhập</span>
+                <span><i className="mr-2 inline-block h-3 w-3 rounded-sm bg-[color:var(--danger)]" />Chi tiêu</span>
               </div>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="panel">
-                <h2 className="text-3xl">Phân bổ danh mục</h2>
-                <div className="mt-7 grid gap-4">
-                  {categories.map((item) => (
-                    <div key={item.name}>
-                      <div className="mb-2 flex justify-between text-sm">
-                        <span>{item.name}</span>
-                        <span className="text-[color:var(--muted)]">{item.amount.toLocaleString()}k</span>
+                <h2 className="text-2xl font-semibold text-[color:var(--ink)]">Chi tiêu theo danh mục</h2>
+                {isDashboardLoading && !summary ? (
+                  <LoadingState label="Đang phân tích danh mục..." />
+                ) : categories.length === 0 ? (
+                  <EmptyState label="Chưa có khoản chi nào để phân bổ." />
+                ) : (
+                  <div className="mt-7 grid gap-4">
+                    {categories.map((item, index) => (
+                      <div key={item.category}>
+                        <div className="mb-2 flex justify-between gap-4 text-sm">
+                          <span className="font-medium text-[color:var(--ink)]">{item.category}</span>
+                          <span className="text-right text-[color:var(--muted)]">
+                            {formatCurrency(item.amount, summary?.currency)} · {formatPercent(item.percent)}
+                          </span>
+                        </div>
+                        <div className="h-3 overflow-hidden rounded-md bg-[color:var(--panel-soft)]">
+                          <div
+                            className="h-full rounded-md"
+                            style={{ width: `${Math.min(100, item.percent)}%`, background: categoryColor(index) }}
+                          />
+                        </div>
                       </div>
-                      <div className="h-3 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${(item.amount / categoryTotal) * 100}%`, background: item.color }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="panel">
-                <h2 className="text-3xl">Mục tiêu tiết kiệm</h2>
-                <div className="mt-8 grid place-items-center">
-                  <div className="relative grid h-52 w-52 place-items-center rounded-full bg-[conic-gradient(#f2c37c_0_68%,rgba(255,255,255,0.09)_68%_100%)]">
-                    <div className="grid h-36 w-36 place-items-center rounded-full bg-[#111722] text-center shadow-inner">
-                      <div>
-                        <p className="text-4xl font-semibold">68%</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">Mục tiêu</p>
+                <h2 className="text-2xl font-semibold text-[color:var(--ink)]">Độ hợp lý chi tiêu</h2>
+                {isDashboardLoading && !summary ? (
+                  <LoadingState label="Đang đánh giá chi tiêu..." />
+                ) : reasonableness ? (
+                  <div className="mt-7 grid gap-5">
+                    <div className="rounded-lg border border-[color:var(--line)] bg-[color:var(--panel-soft)] p-4">
+                      <p className={`text-sm font-semibold ${reasonTone(reasonableness.status)}`}>{reasonLabel(reasonableness.status)}</p>
+                      <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">{reasonDescription(reasonableness)}</p>
+                    </div>
+                    <div>
+                      <div className="mb-2 flex justify-between text-sm">
+                        <span>Tỷ lệ chi tiêu / thu nhập</span>
+                        <span className="font-medium text-[color:var(--ink)]">{reasonableness.expenseRatio === null ? "Chưa đủ dữ liệu" : `${expenseRatioPercent}%`}</span>
+                      </div>
+                      <div className="h-3 overflow-hidden rounded-md bg-[color:var(--panel-soft)]">
+                        <div className={`h-full rounded-md ${reasonBarColor(reasonableness.status)}`} style={{ width: `${expenseRatioPercent}%` }} />
                       </div>
                     </div>
+                    {reasonableness.categoryWarnings.length > 0 ? (
+                      <div className="grid gap-2 text-sm text-[color:var(--muted)]">
+                        {reasonableness.categoryWarnings.map((warning) => (
+                          <p key={warning.category}>• {warning.category} chiếm {formatPercent(warning.percent)} tổng chi tiêu.</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-[color:var(--muted)]">Không có danh mục nào vượt ngưỡng cảnh báo.</p>
+                    )}
+                  </div>
+                ) : (
+                  <EmptyState label="Chưa có dữ liệu để đánh giá." />
+                )}
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header flex-col items-start sm:flex-row sm:items-center">
+                <div>
+                  <h2 className="text-2xl font-semibold text-[color:var(--ink)]">Giao dịch gần đây</h2>
+                  <p className="mt-2 text-sm text-[color:var(--muted)]">Xóa khoản chi nhập sai để cập nhật lại số liệu và ngữ cảnh chat.</p>
+                </div>
+                <span className="badge">20 giao dịch</span>
+              </div>
+
+              {isDashboardLoading && transactions.length === 0 ? (
+                <LoadingState label="Đang tải giao dịch..." />
+              ) : transactions.length === 0 ? (
+                <EmptyState label="Chưa có giao dịch nào. Hãy nhắn trợ lý để ghi nhận khoản thu chi đầu tiên." />
+              ) : (
+                <div className="mt-6 overflow-hidden rounded-lg border border-[color:var(--line)]">
+                  <div className="hidden grid-cols-[1.2fr_0.7fr_0.7fr_auto] gap-4 bg-[color:var(--panel-soft)] px-4 py-3 text-sm font-medium text-[color:var(--ink)] md:grid">
+                    <span>Giao dịch</span>
+                    <span>Danh mục</span>
+                    <span className="text-right">Số tiền</span>
+                    <span className="text-right">Thao tác</span>
+                  </div>
+                  <div className="divide-y divide-[color:var(--line)]">
+                    {transactions.map((transaction) => (
+                      <div className="grid gap-3 px-4 py-4 md:grid-cols-[1.2fr_0.7fr_0.7fr_auto] md:items-center" key={transaction.id}>
+                        <div>
+                          <p className="font-medium text-[color:var(--ink)]">{transaction.note || transaction.category}</p>
+                          <p className="mt-1 text-sm text-[color:var(--muted)]">{formatDate(transaction.occurredAt)} · {transaction.source || "manual"}</p>
+                        </div>
+                        <p className="text-sm text-[color:var(--muted)]">{transaction.category}</p>
+                        <p className={`font-semibold md:text-right ${transaction.type === "income" ? "text-[color:var(--success)]" : "text-[color:var(--danger)]"}`}>
+                          {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.amount, transaction.currency)}
+                        </p>
+                        <div className="flex justify-start md:justify-end">
+                          {transaction.type === "expense" ? (
+                            <button
+                              className="danger-button"
+                              type="button"
+                              disabled={deletingId === transaction.id}
+                              onClick={() => deleteTransaction(transaction)}
+                            >
+                              {deletingId === transaction.id ? "Đang xóa" : "Xóa"}
+                            </button>
+                          ) : (
+                            <span className="text-sm text-[color:var(--muted)]">—</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <p className="mt-6 text-center text-sm leading-6 text-[color:var(--muted)]">
-                  Bạn còn cách mục tiêu quỹ dự phòng tháng này khoảng 20,5 triệu.
-                </p>
-              </div>
+              )}
             </div>
           </div>
 
-          <aside className="grid gap-6">
+          <aside className="grid content-start gap-6">
             <div className="panel">
-              <h2 className="text-3xl">Tín hiệu chi tiêu</h2>
-              <div className="mt-7 space-y-5">
-                <Pulse label="Sức khỏe ngân sách" value="Rất tốt" percent={82} />
-                <Pulse label="Hóa đơn định kỳ" value="Ổn định" percent={64} />
-                <Pulse label="Rủi ro mua sắm vội" value="Thấp" percent={28} />
+              <div className="panel-header flex-col items-start sm:flex-row sm:items-center xl:flex-col xl:items-start 2xl:flex-row 2xl:items-center">
+                <div>
+                  <h2 className="text-2xl font-semibold text-[color:var(--ink)]">Trợ lý tài chính</h2>
+                  <p className="mt-2 text-sm text-[color:var(--muted)]">Nhắn bằng tiếng Việt để ghi nhận thu chi và xem lại lịch sử.</p>
+                </div>
+                <span className="badge">Chatbot</span>
               </div>
-            </div>
 
-            <div className="panel">
-              <div className="panel-header">
-                <h2 className="text-3xl">Giao dịch gần đây</h2>
-                <span className="badge">Tháng 6</span>
-              </div>
-              <div className="mt-6 divide-y divide-white/10">
-                {transactions.map(([name, category, amount, date]) => (
-                  <div className="flex items-center justify-between gap-4 py-4" key={`${name}-${date}`}>
-                    <div>
-                      <p className="font-medium">{name}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--muted)]">{category} / {date}</p>
+              <div className="mt-6 flex max-h-[520px] min-h-80 flex-col gap-3 overflow-y-auto rounded-lg border border-[color:var(--line)] bg-[color:var(--panel-soft)] p-4">
+                {isChatLoading && chatMessages.length === 0 ? (
+                  <LoadingState label="Đang tải lịch sử trò chuyện..." />
+                ) : chatMessages.length === 0 ? (
+                  <EmptyState label="Chưa có tin nhắn. Ví dụ: “tôi vừa chuyển 20k tiền ăn sáng”." />
+                ) : (
+                  chatMessages.map((message) => (
+                    <div
+                      className={`max-w-[88%] rounded-lg px-4 py-3 text-sm leading-6 ${
+                        message.role === "user"
+                          ? "ml-auto bg-[color:var(--primary)] text-[color:var(--on-primary)]"
+                          : "mr-auto border border-[color:var(--line)] bg-[color:var(--panel)] text-[color:var(--ink)]"
+                      }`}
+                      key={message.id}
+                    >
+                      <p>{message.content}</p>
+                      {message.historySaveFailed && message.warning ? (
+                        <div className="mt-3 rounded-md border border-[color:var(--warning)] bg-[color:var(--panel-soft)] p-3 text-[color:var(--ink)]">
+                          <p className="font-semibold text-[color:var(--warning)]">Giao dịch đã được lưu</p>
+                          <p className="mt-1 text-xs leading-5 text-[color:var(--muted)]">{message.warning}</p>
+                        </div>
+                      ) : null}
+                      <p className={`mt-2 text-xs ${message.role === "user" ? "text-[color:var(--on-primary)] opacity-80" : "text-[color:var(--muted)]"}`}>
+                        {message.pending ? "Đang đồng bộ" : formatTime(message.createdAt)}
+                      </p>
                     </div>
-                    <span className={amount.startsWith("+") ? "text-emerald-300" : "text-rose-200"}>{amount}</span>
-                  </div>
-                ))}
+                  ))
+                )}
+                <div ref={chatEndRef} />
               </div>
+
+              {chatError ? <AlertMessage message={chatError} /> : null}
+              {chatWarning ? <WarningMessage message={chatWarning} /> : null}
+
+              <form className="mt-5 grid gap-3" onSubmit={sendChatMessage}>
+                <div className="field">
+                  <label htmlFor="chat-message">Tin nhắn</label>
+                  <textarea
+                    id="chat-message"
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    placeholder="Ví dụ: tôi vừa chuyển 20k tiền ăn sáng"
+                    disabled={isSendingChat}
+                  />
+                </div>
+                <button className="action-button" type="submit" disabled={isSendingChat || !chatInput.trim()}>
+                  {isSendingChat ? "Đang gửi..." : "Gửi cho trợ lý"}
+                </button>
+              </form>
             </div>
           </aside>
         </section>
@@ -220,28 +626,262 @@ export default function DashboardPage() {
   );
 }
 
-function MetricCard({ label, value, delta, tone }: { label: string; value: string; delta: string; tone: "positive" | "warning" }) {
+function MetricCard({
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  tone: "positive" | "warning" | "danger";
+}) {
+  const toneClass = tone === "positive" ? "text-[color:var(--success)]" : tone === "warning" ? "text-[color:var(--warning)]" : "text-[color:var(--danger)]";
+
   return (
-    <div className="panel p-5">
-      <p className="text-xs uppercase tracking-[0.24em] text-[color:var(--muted)]">{label}</p>
-      <div className="mt-4 flex items-end justify-between gap-4">
-        <p className="text-3xl font-semibold">{value}</p>
-        <span className={tone === "positive" ? "text-sm text-emerald-300" : "text-sm text-amber-200"}>{delta}</span>
+    <div className="panel">
+      <p className="text-sm font-medium text-[color:var(--muted)]">{label}</p>
+      <div className="mt-4 grid gap-2">
+        <p className="text-3xl font-semibold text-[color:var(--ink)]">{value}</p>
+        <span className={`text-sm ${toneClass}`}>{helper}</span>
       </div>
     </div>
   );
 }
 
-function Pulse({ label, value, percent }: { label: string; value: string; percent: number }) {
+function AlertMessage({ message }: { message: string }) {
   return (
-    <div>
-      <div className="mb-2 flex justify-between text-sm">
-        <span>{label}</span>
-        <span className="text-[color:var(--accent-strong)]">{value}</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-gradient-to-r from-[#f2c37c] to-[#7dd3fc]" style={{ width: `${percent}%` }} />
-      </div>
+    <div className="relative z-10 mb-6 rounded-lg border border-[color:var(--danger)] bg-[color:var(--panel)] px-4 py-3 text-sm text-[color:var(--danger)]">
+      {message}
     </div>
   );
+}
+
+function WarningMessage({ message }: { message: string }) {
+  return (
+    <div className="relative z-10 mt-4 rounded-lg border border-[color:var(--warning)] bg-[color:var(--panel)] px-4 py-3 text-sm">
+      <p className="font-semibold text-[color:var(--warning)]">Giao dịch đã được lưu</p>
+      <p className="mt-1 text-[color:var(--muted)]">{message}</p>
+    </div>
+  );
+}
+
+function LoadingState({ label }: { label: string }) {
+  return <div className="mt-6 rounded-lg border border-[color:var(--line)] bg-[color:var(--panel-soft)] p-4 text-sm text-[color:var(--muted)]">{label}</div>;
+}
+
+function EmptyState({ label }: { label: string }) {
+  return <div className="mt-6 rounded-lg border border-[color:var(--line)] bg-[color:var(--panel-soft)] p-4 text-sm text-[color:var(--muted)]">{label}</div>;
+}
+
+function buildHistorySaveWarning(warning: string | null) {
+  const retryReminder = "Giao dịch tiền đã được lưu thành công; hãy kiểm tra danh sách giao dịch gần đây trước khi gửi lại để tránh ghi trùng.";
+  const normalizedWarning = warning?.trim();
+
+  return normalizedWarning ? `${normalizedWarning} ${retryReminder}` : `Phản hồi trợ lý không lưu được vào lịch sử. ${retryReminder}`;
+}
+
+function mergePersistedChatWithLocalWarnings(persistedMessages: ChatMessage[], currentMessages: ChatMessage[]) {
+  const localWarningMessages = currentMessages.filter((message) => message.historySaveFailed);
+
+  if (localWarningMessages.length === 0) {
+    return persistedMessages;
+  }
+
+  const persistedIds = new Set(persistedMessages.map((message) => message.id));
+  return sortChatMessages([...persistedMessages, ...localWarningMessages.filter((message) => !persistedIds.has(message.id))]);
+}
+
+function upsertLocalWarningMessage(messages: ChatMessage[], warningMessage: ChatMessage) {
+  const stableWarningMessage = {
+    ...warningMessage,
+    pending: false,
+    historySaveFailed: true,
+  };
+  const exists = messages.some((message) => message.id === stableWarningMessage.id);
+
+  if (exists) {
+    return messages.map((message) => (message.id === stableWarningMessage.id ? stableWarningMessage : message));
+  }
+
+  return sortChatMessages([...messages, stableWarningMessage]);
+}
+
+function sortChatMessages(messages: ChatMessage[]) {
+  return [...messages].sort((first, second) => Date.parse(first.createdAt) - Date.parse(second.createdAt));
+}
+
+async function fetchJson<T>(url: string, token: string): Promise<T> {
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (response.status === 401) {
+    throw new AuthExpiredError("Phiên đăng nhập đã hết hạn.");
+  }
+
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+
+  return (await response.json()) as T;
+}
+
+async function readError(response: Response) {
+  const text = await response.text();
+
+  if (!text) {
+    return `Không thể hoàn tất yêu cầu (mã ${response.status}). Vui lòng thử lại.`;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as {
+      title?: string;
+      detail?: string;
+      errors?: Record<string, string[] | string>;
+    };
+    const validationMessages = parsed.errors
+      ? Object.values(parsed.errors)
+          .flatMap((value) => (Array.isArray(value) ? value : [value]))
+          .filter(Boolean)
+      : [];
+
+    return [parsed.detail, ...validationMessages, parsed.title].filter(Boolean).join(" ") || text;
+  } catch {
+    return text;
+  }
+}
+
+function normalizeAgentIntent(intent: AgentResponse["intent"]) {
+  if (intent === "income" || intent === "expense") {
+    return intent;
+  }
+
+  return null;
+}
+
+function getAnalyticsRange() {
+  const today = new Date();
+  const from = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+
+  return {
+    from: toDateParam(from),
+    to: toDateParam(today),
+  };
+}
+
+function toDateParam(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeCashflow(items: CashflowByMonth[], fromDate: string) {
+  const start = new Date(`${fromDate}T00:00:00`);
+  const byMonth = new Map(items.map((item) => [item.month, item]));
+
+  return Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(start.getFullYear(), start.getMonth() + index, 1);
+    const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+    return byMonth.get(month) ?? { month, income: 0, expense: 0, net: 0 };
+  });
+}
+
+function formatCurrency(value: number, currency = "VND") {
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatPercent(value: number) {
+  return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(value)}%`;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
+}
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }).format(new Date(value));
+}
+
+function formatMonth(value: string) {
+  const [year, month] = value.split("-");
+  return month && year ? `T${Number(month)}/${year.slice(2)}` : value;
+}
+
+function formatRange(from: string, to: string) {
+  return `${formatDate(from)} - ${formatDate(to)}`;
+}
+
+function categoryColor(index: number) {
+  const colors = ["var(--primary)", "var(--accent)", "var(--warning)", "var(--success)", "var(--secondary)", "var(--danger)"];
+  return colors[index % colors.length];
+}
+
+function reasonLabel(status: string) {
+  if (status === "healthy") {
+    return "Lành mạnh";
+  }
+  if (status === "watch") {
+    return "Cần theo dõi";
+  }
+  if (status === "high") {
+    return "Chi tiêu cao";
+  }
+  return "Chưa đủ dữ liệu";
+}
+
+function reasonDescription(reasonableness: Reasonableness) {
+  if (reasonableness.status === "healthy") {
+    return "Mức chi đang hợp lý so với thu nhập trong kỳ.";
+  }
+  if (reasonableness.status === "watch") {
+    return "Chi tiêu đang tiến gần ngưỡng cần kiểm soát. Hãy xem lại các danh mục lớn.";
+  }
+  if (reasonableness.status === "high") {
+    return "Chi tiêu đang cao so với thu nhập. Nên rà soát các khoản chi không cần thiết.";
+  }
+  return "Cần thêm dữ liệu thu nhập để đánh giá độ hợp lý của chi tiêu.";
+}
+
+function reasonTone(status: string) {
+  if (status === "healthy") {
+    return "text-[color:var(--success)]";
+  }
+  if (status === "watch") {
+    return "text-[color:var(--warning)]";
+  }
+  if (status === "high") {
+    return "text-[color:var(--danger)]";
+  }
+  return "text-[color:var(--secondary)]";
+}
+
+function reasonBarColor(status: string) {
+  if (status === "healthy") {
+    return "bg-[color:var(--success)]";
+  }
+  if (status === "watch") {
+    return "bg-[color:var(--warning)]";
+  }
+  if (status === "high") {
+    return "bg-[color:var(--danger)]";
+  }
+  return "bg-[color:var(--secondary)]";
+}
+
+function getTransactionId(transaction: AgentResponse["transaction"]) {
+  if (!transaction) {
+    return null;
+  }
+
+  const id = transaction.id ?? transaction.Id;
+  return typeof id === "string" ? id : null;
 }

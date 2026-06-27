@@ -1,16 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useState, useTransition } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type AuthMode = "login" | "register";
 
 type LoginResponse = {
-  userId: string;
-  accessToken: string;
+  userId?: string;
+  accessToken?: string;
+  AccessToken?: string;
+  token?: string;
 };
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+const tokenStorageKey = "expensecraft_access_token";
+const legacyUserIdStorageKey = "expensecraft_user_id";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5000";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -19,16 +23,21 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [isPending, startTransition] = useTransition();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem("expensecraft_access_token")) {
+    if (localStorage.getItem(tokenStorageKey)) {
       router.replace("/dashboard");
     }
   }, [router]);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmitting) {
+      return;
+    }
+
     setMessage("");
 
     if (mode === "register" && password !== confirmPassword) {
@@ -36,38 +45,46 @@ export default function AuthPage() {
       return;
     }
 
-    startTransition(async () => {
-      try {
-        if (mode === "register") {
-          const registerResponse = await fetch(`${apiUrl}/api/users/register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
-          });
+    setIsSubmitting(true);
 
-          if (!registerResponse.ok) {
-            throw new Error(await readError(registerResponse));
-          }
-        }
-
-        const loginResponse = await fetch(`${apiUrl}/api/users/login`, {
+    try {
+      if (mode === "register") {
+        const registerResponse = await fetch(`${apiUrl}/api/users/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
         });
 
-        if (!loginResponse.ok) {
-          throw new Error(await readError(loginResponse));
+        if (!registerResponse.ok) {
+          throw new Error(await readError(registerResponse));
         }
-
-        const result = (await loginResponse.json()) as LoginResponse;
-        localStorage.setItem("expensecraft_access_token", result.accessToken);
-        localStorage.setItem("expensecraft_user_id", result.userId);
-        router.replace("/dashboard");
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Không thể xác thực tài khoản.");
       }
-    });
+
+      const loginResponse = await fetch(`${apiUrl}/api/users/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!loginResponse.ok) {
+        throw new Error(await readError(loginResponse));
+      }
+
+      const result = (await loginResponse.json()) as LoginResponse;
+      const accessToken = result.accessToken ?? result.AccessToken ?? result.token;
+
+      if (!accessToken) {
+        throw new Error("Máy chủ không trả về mã đăng nhập hợp lệ. Vui lòng thử lại.");
+      }
+
+      localStorage.setItem(tokenStorageKey, accessToken);
+      localStorage.removeItem(legacyUserIdStorageKey);
+      router.replace("/dashboard");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không thể xác thực tài khoản.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -82,19 +99,6 @@ export default function AuthPage() {
             <p className="mt-6 max-w-xl text-lg leading-8 text-[color:var(--muted)]">
               Đăng nhập để theo dõi ngân sách, dòng tiền, xu hướng chi tiêu và các tín hiệu tài chính quan trọng trong một không gian trực quan.
             </p>
-
-            <div className="mt-9 grid gap-4 sm:grid-cols-3">
-              {[
-                ["Độ rõ ngân sách", "92%"],
-                ["Hóa đơn theo dõi", "18"],
-                ["Tiết kiệm thông minh", "13,8tr"],
-              ].map(([label, value]) => (
-                <div className="stat-card" key={label}>
-                  <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">{label}</p>
-                  <p className="mt-3 text-2xl font-semibold">{value}</p>
-                </div>
-              ))}
-            </div>
           </div>
 
           <div className="panel reveal" data-delay="2">
@@ -108,6 +112,7 @@ export default function AuthPage() {
               <button
                 className="ghost-button px-5"
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => {
                   setMode(mode === "login" ? "register" : "login");
                   setMessage("");
@@ -165,13 +170,13 @@ export default function AuthPage() {
               ) : null}
 
               {message ? (
-                <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                <div className="rounded-lg border border-[color:var(--danger)] bg-[color:var(--panel)] px-4 py-3 text-sm text-[color:var(--danger)]">
                   {message}
                 </div>
               ) : null}
 
-              <button className="action-button" type="submit" disabled={isPending}>
-                {isPending ? "Đang xử lý..." : mode === "login" ? "Đăng nhập vào trang chủ" : "Tạo tài khoản và vào trang chủ"}
+              <button className="action-button" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Đang xử lý..." : mode === "login" ? "Đăng nhập vào trang chủ" : "Tạo tài khoản và vào trang chủ"}
               </button>
             </form>
 
@@ -190,8 +195,18 @@ async function readError(response: Response) {
   }
 
   try {
-    const parsed = JSON.parse(text) as { title?: string; detail?: string };
-    return parsed.detail ?? parsed.title ?? text;
+    const parsed = JSON.parse(text) as {
+      title?: string;
+      detail?: string;
+      errors?: Record<string, string[] | string>;
+    };
+    const validationMessages = parsed.errors
+      ? Object.values(parsed.errors)
+          .flatMap((value) => (Array.isArray(value) ? value : [value]))
+          .filter(Boolean)
+      : [];
+
+    return [parsed.detail, ...validationMessages, parsed.title].filter(Boolean).join(" ") || text;
   } catch {
     return text;
   }

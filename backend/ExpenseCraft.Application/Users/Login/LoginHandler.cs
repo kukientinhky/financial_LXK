@@ -24,7 +24,7 @@ public sealed class LoginHandler
         CancellationToken cancellationToken = default)
     {
         var user = await _userRepository.GetByEmailAsync(
-            new Email(command.Email),
+            Email.Create(command.Email),
             cancellationToken);
         if (user is null)
         {

@@ -895,7 +895,7 @@ dotnet ef migrations add CreateUsersTable \
   --startup-project ExpenseCraft.Api
 ```
 
-Apply migration:
+Apply migration thủ công nếu bạn không dựa vào auto-migration lúc startup development:
 
 ```bash
 dotnet ef database update \
@@ -930,6 +930,8 @@ Chạy backend:
 ```bash
 dotnet run --project ExpenseCraft.Api
 ```
+
+Khi `ASPNETCORE_ENVIRONMENT=Development`, backend tự chạy EF Core migration còn thiếu bằng `Database.MigrateAsync()` lúc startup. Với Docker Compose, biến này đã được set sẵn nên database dev mới sẽ được migrate khi backend khởi động.
 
 Mở Swagger:
 
@@ -1077,24 +1079,23 @@ dotnet ef database update \
 
 ### 11.1. Error Handling
 
-Hiện tại handler đang dùng exception:
+Handler dùng exception cho duplicate email:
 
 ```csharp
 throw new InvalidOperationException("User with the specified email already exists.");
 ```
 
-Vấn đề:
+Hiện tại middleware API map exception này thành `400 Bad Request` dạng Problem Details. Một hướng cải thiện tiếp theo là dùng status chuyên biệt hơn:
 
 ```text
-API có thể trả 500 Internal Server Error cho lỗi business như duplicate email.
-Duplicate email nên là 409 Conflict hoặc 400 Bad Request.
+Duplicate email có thể là 409 Conflict hoặc 400 Bad Request có error code ổn định.
 ```
 
 Hướng cải thiện:
 
 ```text
 Dùng Result pattern.
-Hoặc bắt exception ở API và map sang HTTP status phù hợp.
+Hoặc map lỗi domain sang HTTP status/error code ổn định ngay tại endpoint.
 ```
 
 ### 11.2. Đổi tên RegisterHandler

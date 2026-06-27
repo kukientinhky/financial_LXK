@@ -16,15 +16,21 @@
 financial_LXK/
 |-- backend/
 |   |-- ExpenseCraft.Domain/              # domain model and business rules only
-|   |   `-- Users/                        # current user aggregate/value objects
+|   |   |-- Users/                        # current user aggregate/value objects
+|   |   |-- Transactions/                 # transaction aggregate and money rules
+|   |   `-- Chat/                         # persisted chat message domain types
 |   |
 |   |-- ExpenseCraft.Application/         # use cases and application contracts
 |   |   |-- Common/                       # shared application abstractions
-|   |   `-- Users/                        # register/login user use cases
+|   |   |-- Users/                        # register/login user use cases
+|   |   |-- Transactions/                 # create/list/delete/analytics use cases
+|   |   `-- Chat/                         # chat message persistence use cases
 |   |
 |   |-- ExpenseCraft.Infrastructure/      # external implementations
 |   |   |-- Persistence/                  # EF Core DbContext
 |   |   |-- Users/                        # EF repositories
+|   |   |-- Transactions/                 # EF transaction repositories
+|   |   |-- Chat/                         # EF chat repositories
 |   |   |-- Security/                     # BCrypt/JWT implementations
 |   |   `-- Migrations/                   # EF Core migrations
 |   |
@@ -37,7 +43,7 @@ financial_LXK/
 |       |-- page.tsx                      # Vietnamese login/register page
 |       `-- dashboard/page.tsx            # authenticated dashboard page
 |
-|-- agent/                               # planned Python/MCP chatbot service
+|-- agent/                               # Python/FastAPI MCP-like chatbot service
 |   |-- app/
 |   |   |-- main.py                       # Python service entrypoint
 |   |   |-- config.py                     # environment/config loading
@@ -49,6 +55,9 @@ financial_LXK/
 |
 |-- .opencode/agent/                     # OpenCode subagent definitions
 |-- docs/                                # documentation maintained by @docs
+|   |-- backend/                         # backend API and feature docs
+|   |-- chatbot/                         # Python/MCP chatbot flow docs
+|   `-- frontend/                        # frontend behavior docs
 `-- docker-compose.yml                   # local development infrastructure
 ```
 
@@ -63,4 +72,16 @@ financial_LXK/
 - Backend: .NET 8, ASP.NET Core Minimal API, EF Core, Npgsql/PostgreSQL, BCrypt, JWT Bearer auth.
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS 4.
 - Infrastructure: Docker Compose, PostgreSQL 16, pgAdmin, Node 22 container, .NET SDK 8 container.
-- Planned chatbot/MCP layer: Python service or MCP tooling for Vietnamese finance intent parsing and transaction writes.
+- Chatbot/MCP layer: Python/FastAPI service for Vietnamese finance intent parsing and transaction writes through authenticated backend APIs.
+
+## Design System
+- Frontend UI must follow `frontend/DESIGN.md`.
+- For any frontend/UI task, `@frontend` must read `frontend/DESIGN.md` before editing files.
+- Do not invent new colors, spacing, typography, shadows, or border radius if `frontend/DESIGN.md` already defines them.
+- If a required token is missing, use the closest existing token and mention it in the final response.
+
+## Verification
+- Frontend changes: run `npm run lint` and `npm run build` from `frontend/`.
+- Backend .NET changes: run `dotnet build` from `backend/`.
+- Python/MCP changes: run Python tests from `agent/`.
+- Documentation changes: check Markdown links and command accuracy.
