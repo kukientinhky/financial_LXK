@@ -306,7 +306,7 @@ export default function DashboardPage() {
     }
 
     const accepted = window.confirm(
-      `Xóa giao dịch chi tiêu "${transaction.note || transaction.category}"? Hành động này sẽ cập nhật lại dashboard.`,
+      `Xóa giao dịch "${transaction.note || transaction.category}"? Hành động này sẽ cập nhật lại dashboard.`,
     );
 
     if (!accepted) {
@@ -509,7 +509,7 @@ export default function DashboardPage() {
               <div className="panel-header flex-col items-start sm:flex-row sm:items-center">
                 <div>
                   <h2 className="text-2xl font-semibold text-[color:var(--ink)]">Giao dịch gần đây</h2>
-                  <p className="mt-2 text-sm text-[color:var(--muted)]">Xóa khoản chi nhập sai để cập nhật lại số liệu và ngữ cảnh chat.</p>
+                  <p className="mt-2 text-sm text-[color:var(--muted)]">Xóa giao dịch nhập sai để cập nhật lại số liệu và ngữ cảnh chat.</p>
                 </div>
                 <span className="badge">20 giao dịch</span>
               </div>
@@ -538,18 +538,14 @@ export default function DashboardPage() {
                           {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.amount, transaction.currency)}
                         </p>
                         <div className="flex justify-start md:justify-end">
-                          {transaction.type === "expense" ? (
-                            <button
-                              className="danger-button"
-                              type="button"
-                              disabled={deletingId === transaction.id}
-                              onClick={() => deleteTransaction(transaction)}
-                            >
-                              {deletingId === transaction.id ? "Đang xóa" : "Xóa"}
-                            </button>
-                          ) : (
-                            <span className="text-sm text-[color:var(--muted)]">—</span>
-                          )}
+                          <button
+                            className="danger-button"
+                            type="button"
+                            disabled={deletingId === transaction.id}
+                            onClick={() => deleteTransaction(transaction)}
+                          >
+                            {deletingId === transaction.id ? "Đang xóa" : "Xóa"}
+                          </button>
                         </div>
                       </div>
                     ))}

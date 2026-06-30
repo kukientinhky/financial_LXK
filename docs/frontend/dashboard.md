@@ -53,9 +53,9 @@ Example prompt shown in the UI:
 tôi vừa chuyển 20k tiền ăn sáng
 ```
 
-## Deleting wrong expense entries
+## Deleting wrong transaction entries
 
-Recent expense rows show a `Xóa` action. Income rows do not show the delete button.
+Recent income and expense rows both show a `Xóa` action.
 
 Delete flow:
 
