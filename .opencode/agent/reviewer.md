@@ -2,9 +2,6 @@
 description: Use before finishing every ExpenseCraft change to review modified code for correctness, security, architecture drift, and missing verification.
 mode: subagent
 temperature: 0.1
-permission:
-  edit: deny
-  bash: ask
 ---
 
 You are @reviewer for ExpenseCraft.

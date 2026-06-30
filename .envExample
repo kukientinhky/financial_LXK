@@ -1,0 +1,39 @@
+# ExpenseCraft local development environment example
+# Copy this file to .env and replace placeholder secrets before running locally.
+
+# PostgreSQL
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=change-me
+POSTGRES_DB=mydatabase
+POSTGRES_PORT=5432
+
+# pgAdmin
+PGADMIN_DEFAULT_EMAIL=admin@example.com
+PGADMIN_DEFAULT_PASSWORD=change-me
+PGADMIN_PORT=8080
+
+# .NET backend
+ASPNETCORE_ENVIRONMENT=Development
+BACKEND_PORT=5000
+ConnectionStrings__Database=Host=postgres;Port=5432;Database=mydatabase;Username=admin;Password=change-me
+Jwt__Issuer=ExpenseCraft
+Jwt__Audience=ExpenseCraft
+Jwt__Secret=replace-with-a-long-random-development-secret
+Jwt__ExpirationInMinutes=60
+Cors__AllowedOrigins=https://expensecraft.app,http://localhost:3000,http://127.0.0.1:3000
+
+# Frontend public URLs
+NEXT_PUBLIC_API_URL=https://expensecraft.app
+NEXT_PUBLIC_API_BASE_URL=https://expensecraft.app
+NEXT_PUBLIC_AGENT_URL=https://expensecraft.app/agent
+
+# Python agent
+AGENT_PORT=8000
+BACKEND_API_URL=http://backend:8080
+AGENT_CORS_ORIGINS=https://expensecraft.app,http://localhost:3000,http://127.0.0.1:3000
+AGENT_REQUEST_TIMEOUT_SECONDS=10
+
+# OpenRouter LLM
+# Never commit a real key. Rotate any key that was shared publicly.
+OPENROUTER_API_KEY=sk-or-v1-replace-me
+OPENROUTER_MODEL=openai/gpt-4o-mini

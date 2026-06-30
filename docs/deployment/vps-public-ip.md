@@ -1,14 +1,30 @@
-# VPS HTTP Deployment with Docker Compose
+# VPS HTTPS Deployment with Caddy and Docker Compose
 
-This guide documents a temporary first-test deployment on a VPS with public IP `23.100.97.60` using the current `docker-compose.yml`.
+This guide documents the current public deployment on a VPS with public IP `23.100.97.60`, domain `expensecraft.app`, Docker Compose, and Caddy as the public HTTPS reverse proxy.
 
-> This is an HTTP/IP deployment for validation only. For ongoing use, put the app behind a domain, HTTPS, and a reverse proxy such as Nginx, Caddy, or Traefik.
+Browsers must use HTTPS-only public URLs to avoid Mixed Content blocks. Do **not** configure frontend public URLs such as `http://23.100.97.60:5000`.
+
+## DNS and public entrypoint
+
+- Browser URL: `https://expensecraft.app`
+- DNS: create an A record `expensecraft.app -> 23.100.97.60`.
+- Caddy needs inbound ports `80` and `443` free on the host for ACME certificate issuance and renewal.
+- SSH may remain open for administration.
+- Compose-published app ports `3000`, `5000`, and `8000` are localhost-bound for debugging and should not be public.
 
 ## Public URLs
 
-- Browser app: `http://23.100.97.60:3000`
-- Backend API from browser: `http://23.100.97.60:5000`
-- Python agent from browser: `http://23.100.97.60:8000`
+- Browser app: `https://expensecraft.app`
+- Backend API from browser: `https://expensecraft.app/api`
+- Python agent from browser: `https://expensecraft.app/agent`
+
+Caddy routes:
+
+| Public path | Upstream | Notes |
+| --- | --- | --- |
+| `/` | `frontend:3000` | Next.js app. |
+| `/api/*` | `backend:8080` | .NET API behind the same HTTPS origin. |
+| `/agent/*` | `agent:8000` | Strip the `/agent` prefix before proxying to the Python service. |
 
 PostgreSQL and pgAdmin are intentionally bound to localhost by Compose:
 
@@ -22,33 +38,33 @@ Do not expose PostgreSQL or pgAdmin publicly on the VPS.
 Set these values in the VPS shell or a local `.env` file next to `docker-compose.yml` before starting the stack:
 
 ```env
-NEXT_PUBLIC_API_URL=http://23.100.97.60:5000
-NEXT_PUBLIC_API_BASE_URL=http://23.100.97.60:5000
-NEXT_PUBLIC_AGENT_URL=http://23.100.97.60:8000
+NEXT_PUBLIC_API_URL=https://expensecraft.app
+NEXT_PUBLIC_API_BASE_URL=https://expensecraft.app
+NEXT_PUBLIC_AGENT_URL=https://expensecraft.app/agent
 
-Cors__AllowedOrigins=http://23.100.97.60:3000,http://localhost:3000,http://127.0.0.1:3000
-AGENT_CORS_ORIGINS=http://23.100.97.60:3000,http://localhost:3000,http://127.0.0.1:3000
+Cors__AllowedOrigins=https://expensecraft.app,http://localhost:3000,http://127.0.0.1:3000
+AGENT_CORS_ORIGINS=https://expensecraft.app,http://localhost:3000,http://127.0.0.1:3000
 
 BACKEND_API_URL=http://backend:8080
 ```
 
 Notes:
 
-- `NEXT_PUBLIC_*` values are browser-visible, so they must use the public VPS IP.
-- Backend CORS must include the frontend origin `http://23.100.97.60:3000`.
-- Agent CORS must include the frontend origin `http://23.100.97.60:3000`.
+- `NEXT_PUBLIC_*` values are browser-visible and are baked into the Next.js build. Rebuild the frontend after changing them.
+- To fix/prevent Mixed Content, all browser-visible API and agent URLs must use `https://expensecraft.app/...`; do not use `http://23.100.97.60:5000` or other HTTP public URLs in frontend env.
+- Backend CORS must include the frontend origin `https://expensecraft.app`.
+- Agent CORS must include the frontend origin `https://expensecraft.app`.
 - The agent's internal backend URL remains `BACKEND_API_URL=http://backend:8080` because the agent container talks to the backend container over the Compose network.
 
 ## Firewall / security group
 
-For the first public test, allow inbound TCP:
+For public access, allow inbound TCP only for:
 
-- `3000` for the Next.js frontend
-- `5000` for the .NET backend API
-- `8000` for the Python agent API
+- `80` for Caddy HTTP challenge/redirect
+- `443` for Caddy HTTPS
 - SSH as needed for administration, usually `22`
 
-Keep PostgreSQL `5432` and pgAdmin `8080` closed to the public internet.
+Keep app/debug ports `3000`, `5000`, and `8000` closed to the public internet. They are localhost-bound in Compose for debugging, not public entrypoints. Keep PostgreSQL `5432` and pgAdmin `8080` closed to the public internet.
 
 ## Start and inspect
 
@@ -62,7 +78,7 @@ docker compose ps
 
 The current Compose frontend command installs dependencies, runs the production Next.js build, then starts Next with `npm run start -- --hostname 0.0.0.0`. It does **not** run `npm run dev`, so development-server HMR WebSocket errors should not appear with this Compose startup path.
 
-After changing frontend source, dependencies, or Compose frontend settings, rebuild the frontend container:
+After changing frontend source, dependencies, Compose frontend settings, or any `NEXT_PUBLIC_*` value, rebuild the frontend container because Next.js bakes public env values at build time:
 
 ```bash
 docker compose up -d --build frontend
@@ -77,9 +93,9 @@ On very low-RAM VPS instances, the in-container `npm run build` step may need sw
 Run these from your workstation or the VPS after the containers are healthy:
 
 ```bash
-curl -i http://23.100.97.60:3000
-curl -i http://23.100.97.60:5000/swagger
-curl -i http://23.100.97.60:8000/docs
+curl -i https://expensecraft.app
+curl -i https://expensecraft.app/api/users/me
+curl -i https://expensecraft.app/agent/docs
 ```
 
 If an endpoint differs in the running service, inspect available routes/logs with:
