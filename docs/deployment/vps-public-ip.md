@@ -60,6 +60,18 @@ docker compose up -d --build
 docker compose ps
 ```
 
+The current Compose frontend command installs dependencies, runs the production Next.js build, then starts Next with `npm run start -- --hostname 0.0.0.0`. It does **not** run `npm run dev`, so development-server HMR WebSocket errors should not appear with this Compose startup path.
+
+After changing frontend source, dependencies, or Compose frontend settings, rebuild the frontend container:
+
+```bash
+docker compose up -d --build frontend
+# or rebuild the full stack:
+docker compose up -d --build
+```
+
+On very low-RAM VPS instances, the in-container `npm run build` step may need swap space or an image built on a larger machine and deployed to the VPS.
+
 ## Basic curl checks
 
 Run these from your workstation or the VPS after the containers are healthy:

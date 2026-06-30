@@ -114,7 +114,8 @@ export default function AuthPage() {
                 type="button"
                 disabled={isSubmitting}
                 onClick={() => {
-                  setMode(mode === "login" ? "register" : "login");
+                  setMode((currentMode) => (currentMode === "login" ? "register" : "login"));
+                  setConfirmPassword("");
                   setMessage("");
                 }}
               >
@@ -122,7 +123,7 @@ export default function AuthPage() {
               </button>
             </div>
 
-            <form className="mt-8 grid gap-5" onSubmit={submitAuth}>
+            <form className="mt-8 grid gap-5" method="post" onSubmit={submitAuth}>
               <div className="field">
                 <label htmlFor="email">Địa chỉ email</label>
                 <input

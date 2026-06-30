@@ -8,13 +8,17 @@
 - `pgadmin` on localhost-only host port `8080`.
 - `.NET backend` on host `http://localhost:5000` -> container port `8080`.
 - `agent` on host `http://localhost:8000` -> container port `8000`.
-- `frontend` on host `http://localhost:3000`.
+- `frontend` on host `http://localhost:3000`; Compose runs the production Next.js path (`npm run build` then `npm run start -- --hostname 0.0.0.0`), not `npm run dev`.
 
 Run locally:
 
 ```bash
 docker compose up
 ```
+
+Because the Compose frontend starts the production Next server, development-server HMR WebSocket errors should not appear when using the current Compose command. If frontend code, dependencies, or Compose frontend settings change, rebuild with `docker compose up -d --build frontend` or rebuild the full stack with `docker compose up -d --build`.
+
+On very low-RAM VPS instances, the frontend `npm run build` step may need swap space or an image built elsewhere and then deployed.
 
 Validate compose wiring:
 
