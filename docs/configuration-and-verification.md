@@ -4,8 +4,8 @@
 
 `docker-compose.yml` includes:
 
-- `postgres` on host port `5432`.
-- `pgadmin` on host port `8080`.
+- `postgres` on localhost-only host port `5432`.
+- `pgadmin` on localhost-only host port `8080`.
 - `.NET backend` on host `http://localhost:5000` -> container port `8080`.
 - `agent` on host `http://localhost:8000` -> container port `8000`.
 - `frontend` on host `http://localhost:3000`.
@@ -34,6 +34,7 @@ The .NET backend reads standard ASP.NET configuration keys. In Docker Compose th
 | `Jwt__Audience` | JWT audience validation. | `ExpenseCraft` |
 | `Jwt__Secret` | HMAC signing key; change for non-dev environments. | `ExpenseCraftDevelopmentSecretKey123456789` |
 | `Jwt__ExpirationInMinutes` | Access-token lifetime. | `60` |
+| `Cors__AllowedOrigins` | Comma-separated browser origins allowed to call the backend. | `http://localhost:3000,http://127.0.0.1:3000` |
 
 Local `appsettings.json` defaults point to PostgreSQL on `localhost:5432`.
 
@@ -77,6 +78,8 @@ NEXT_PUBLIC_API_URL=http://localhost:5000
 NEXT_PUBLIC_AGENT_URL=http://localhost:8000
 ```
 
+For VPS browser access by public IP, these frontend URLs must use the public host instead of container names or localhost. See [VPS HTTP deployment with Docker Compose](deployment/vps-public-ip.md).
+
 Login troubleshooting: the frontend accepts both `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_API_BASE_URL` for the backend base URL. A successful login stores the JWT in `localStorage` under `expensecraft_access_token`; protected calls send it as `Authorization: Bearer <token>`.
 
 ## Verification commands
@@ -110,5 +113,8 @@ Docker:
 
 ```bash
 docker compose config
-docker compose up
+docker compose up -d --build
+docker compose ps
 ```
+
+For temporary VPS/public-IP wiring, see [VPS HTTP deployment with Docker Compose](deployment/vps-public-ip.md).

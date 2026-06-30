@@ -22,6 +22,7 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 const string FrontendCorsPolicy = "FrontendCorsPolicy";
+var allowedCorsOrigins = GetAllowedCorsOrigins(builder.Configuration);
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -31,7 +32,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCorsPolicy, policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "http://127.0.0.1:3000")
+        policy.WithOrigins(allowedCorsOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -330,6 +331,34 @@ static bool TryGetUserId(ClaimsPrincipal user, out Guid userId)
 static string DefaultAgentSource(string? source)
 {
     return string.IsNullOrWhiteSpace(source) ? "agent" : source;
+}
+
+static string[] GetAllowedCorsOrigins(IConfiguration configuration)
+{
+    var configuredOrigins = configuration["Cors:AllowedOrigins"];
+
+    if (string.IsNullOrWhiteSpace(configuredOrigins))
+    {
+        return ["http://localhost:3000", "http://127.0.0.1:3000"];
+    }
+
+    var origins = configuredOrigins
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(origin => !string.IsNullOrWhiteSpace(origin))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    if (origins.Length == 0)
+    {
+        return ["http://localhost:3000", "http://127.0.0.1:3000"];
+    }
+
+    if (origins.Any(origin => origin == "*"))
+    {
+        throw new InvalidOperationException("Cors:AllowedOrigins must list explicit origins. Wildcard '*' is not allowed.");
+    }
+
+    return origins;
 }
 
 static Task WriteProblemAsync(
