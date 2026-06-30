@@ -10,11 +10,14 @@
 - `agent` on localhost-bound host `http://localhost:8000` -> container port `8000`.
 - `frontend` on localhost-bound host `http://localhost:3000`; Compose runs the production Next.js path (`npm run build` then `npm run start -- --hostname 0.0.0.0`), not `npm run dev`.
 
-In the HTTPS VPS deployment, Caddy is the public entrypoint at `https://expensecraft.app` and proxies to the Compose services:
+In the HTTPS VPS deployment, the existing host Nginx is the public entrypoint at `https://expensecraft.app` and proxies to localhost-bound Compose services. The final HTTPS config is `deploy/nginx/expensecraft.app.conf`:
 
-- `/` -> `frontend:3000`
-- `/api/*` -> `backend:8080`
-- `/agent/*` -> `agent:8000` with the `/agent` prefix stripped
+- `/` -> `127.0.0.1:3000`
+- `/api/` -> `127.0.0.1:5000/api/`
+- `/agent/` -> `127.0.0.1:8000/` with the `/agent` prefix stripped
+- exact `/api` and `/agent` -> redirects to `/api/` and `/agent/`
+
+For first-time Let's Encrypt issuance, use the HTTP-only bootstrap config at `deploy/nginx/expensecraft.app.bootstrap.conf` first, then replace it with `deploy/nginx/expensecraft.app.conf` after certificate files exist. There is no Caddy service in `docker-compose.yml`; host Nginx owns public ports `80` and `443`.
 
 Run locally:
 
@@ -88,9 +91,9 @@ NEXT_PUBLIC_API_URL=http://localhost:5000
 NEXT_PUBLIC_AGENT_URL=http://localhost:8000
 ```
 
-For VPS browser access, these frontend URLs must use the public HTTPS host instead of container names, localhost, or HTTP public-IP URLs. See [VPS HTTPS deployment with Caddy and Docker Compose](deployment/vps-public-ip.md).
+For VPS browser access, these frontend URLs must use the public HTTPS host instead of container names, localhost, or HTTP public-IP URLs. See [VPS HTTPS deployment with Host Nginx and Docker Compose](deployment/vps-public-ip.md).
 
-For the HTTPS Caddy deployment, use only HTTPS same-origin public URLs:
+For the HTTPS Nginx deployment, use only HTTPS same-origin public URLs:
 
 ```env
 NEXT_PUBLIC_API_URL=https://expensecraft.app
@@ -140,4 +143,30 @@ docker compose up -d --build
 docker compose ps
 ```
 
-For HTTPS VPS/Caddy wiring, DNS, firewall, and Mixed Content notes, see [VPS HTTPS deployment with Caddy and Docker Compose](deployment/vps-public-ip.md).
+Host Nginx:
+
+First-time TLS bootstrap when `/etc/letsencrypt/live/expensecraft.app/fullchain.pem` and `privkey.pem` do not exist yet:
+
+```bash
+sudo cp deploy/nginx/expensecraft.app.bootstrap.conf /etc/nginx/sites-available/expensecraft.app.conf
+sudo ln -sf /etc/nginx/sites-available/expensecraft.app.conf /etc/nginx/sites-enabled/expensecraft.app.conf
+sudo nginx -t
+sudo systemctl reload nginx
+
+sudo certbot certonly --webroot -w /var/www/html -d expensecraft.app -d www.expensecraft.app
+
+sudo cp deploy/nginx/expensecraft.app.conf /etc/nginx/sites-available/expensecraft.app.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+If certificates already exist, skip bootstrap and use the final HTTPS config directly:
+
+```bash
+sudo cp deploy/nginx/expensecraft.app.conf /etc/nginx/sites-available/expensecraft.app.conf
+sudo ln -sf /etc/nginx/sites-available/expensecraft.app.conf /etc/nginx/sites-enabled/expensecraft.app.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+For HTTPS VPS/Nginx wiring, DNS, firewall, and Mixed Content notes, see [VPS HTTPS deployment with Host Nginx and Docker Compose](deployment/vps-public-ip.md).

@@ -6,5 +6,5 @@ Current feature docs:
 - [Python/MCP chatbot flow](chatbot/python-mcp-agent-flow.md)
 - [Frontend dashboard behavior](frontend/dashboard.md)
 - [Configuration and verification](configuration-and-verification.md)
-- [VPS HTTPS deployment with Caddy and Docker Compose](deployment/vps-public-ip.md)
+- [VPS HTTPS deployment with Host Nginx and Docker Compose](deployment/vps-public-ip.md)
 - [Register account backend guide](backend/register-account.md)

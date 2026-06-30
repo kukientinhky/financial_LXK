@@ -1,20 +1,4 @@
 services:
-  caddy:
-    image: caddy:2-alpine
-    container_name: expensecraft-caddy
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - frontend
-      - backend
-      - agent
-
   postgres:
     image: postgres:16
     container_name: expensecraft-postgres
@@ -97,7 +81,5 @@ services:
       - agent
 
 volumes:
-  caddy_data:
-  caddy_config:
   postgres_data:
   frontend_node_modules:
